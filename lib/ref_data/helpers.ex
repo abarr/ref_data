@@ -1,0 +1,103 @@
+defmodule RefData.Helpers do
+  def return_grouped_values([], acc), do: acc
+
+  def return_grouped_values([h | t], acc) do
+    [key] = Map.keys(h)
+    values = Map.fetch!(h, key)
+
+    acc =
+      acc ++
+        [
+          "#{key}":
+            Enum.into(values, [], fn v -> {v, String.downcase(v)} end)
+            |> Enum.into([], fn {k, v} -> [key: k, value: v] end)
+        ]
+
+    return_grouped_values(t, acc)
+  end
+
+  def return_values([{_key, value}]) do
+    Enum.into(value, [], fn v -> {v, String.downcase(v)} end)
+    |> Enum.into([], fn {k, v} -> [key: k, value: v] end)
+  end
+
+  def single_level?([{_key, value}]) do
+    map = List.first(value)
+    [key] = Map.keys(map)
+
+    case List.first(Map.fetch!(map, key)) do
+      v when is_binary(v) -> true
+      _ -> false
+    end
+  end
+
+  def is_grouped?([{_key, value}]) do
+    value
+    |> List.first()
+    |> is_map()
+  end
+
+  def load_ref_data([]), do: {:error, "Must be a list of strings"}
+
+  def load_ref_data(paths) when is_list(paths) do
+    paths
+    |> Enum.each(fn path ->
+      path
+      |> read_file()
+      |> convert_json_to_map()
+      |> validate_ref_data()
+      |> save_ref_data()
+    end)
+  end
+
+  def load_ref_data(_), do: {:error, "Must be a list of strings"}
+
+  def save_ref_data(map) do
+    [key] = Map.keys(map)
+    values = Map.fetch!(map, key)
+    :ets.insert(:ref_data, {key, values})
+  end
+
+  def get_file_paths(dir) do
+    "#{dir}/*.json"
+    |> Path.wildcard()
+    |> Enum.sort()
+  end
+
+  def read_file(path) when is_binary(path) do
+    File.read!(path)
+  end
+
+  def convert_json_to_map(json) do
+    Jason.decode!(json)
+  end
+
+  def validate_ref_data(map) when is_map(map) do
+    cond do
+      !has_single_key(map) -> {:error, "Has multiple keys"}
+      !has_list_of_values(map) -> {:error, "Must have list of values"}
+      true -> map
+    end
+  end
+
+  def has_list_of_values(map) do
+    [key] = Map.keys(map)
+    values = Map.fetch!(map, key)
+
+    case Enum.count(values) do
+      n when n >= 1 -> true
+      _ -> false
+    end
+  end
+
+  def has_single_key(map) do
+    case Enum.count(Map.keys(map)) do
+      n when n == 1 -> true
+      _ -> false
+    end
+  end
+
+  def capitalise_list(list) do
+    Enum.into(list, [], fn v -> String.capitalize(v) end)
+  end
+end
