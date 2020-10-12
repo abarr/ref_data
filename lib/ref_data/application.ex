@@ -7,7 +7,7 @@ defmodule RefData.Application do
     children = [
       %{
         id: RefData.Server,
-        start: {RefData.Server, :start_link, [Application.get_env(:ref_data, :dir, "ref_data")]}
+        start: {RefData.Server, :start_link, [Application.get_env(:ref_data, :path, "ref_data")]}
       }
     ]
 

@@ -10,8 +10,8 @@ You can use this link to see a demo.
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `ref_data` to your list of dependencies in `mix.exs`:
+The package can be installed by adding `ref_data` to your list of dependencies in 
+`mix.exs`:
 
 ```elixir
 def deps do
@@ -21,9 +21,28 @@ def deps do
 end
 ```
 
-## Using RefData
+## Config
 
-The data is defined as 'json' objects using a key and a list of values.
+`RefData` defaults to looking for `json` objects at teh `root` of teh project in a 
+directory called `ref_data`. You can customise the path to your data by adding an entry
+in your `config.exs` file.
+
+```elixir
+use Mix.Config
+
+...
+
+config :ref_data,
+  path: "path_to_your_dir (e.g. data)"
+
+...
+
+```
+
+
+## Defining Data
+
+The data is defined as `json` objects using a key and a list of values.
 
 ```json
 {
@@ -35,10 +54,43 @@ The data is defined as 'json' objects using a key and a list of values.
 }
 ```
 
+You can also define grouped data by creating a list of key value pairs of data.
+
+```json
+{
+    "countries_grouped": 
+    [
+        { "Asia": ["Australia", "New Zealand"]},
+        { "Americas": ["Canada", "USA"]}
+    ]
+}
+```
+
+## Using RefData
+
+Assuming you `use RefData` in a module named `MyApp.MyRefData` your API is:
 
 
+`MyRefData.list_all_keys/0`
+It will list all keys for data held in memory
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/ref_data](https://hexdocs.pm/ref_data).
+```
+iex(1)> MyRefData.list_all_keys
+["months", "gender"]
+```
 
+
+`MyRefData.get/1`
+When given a key will return a list of data in format required by Phoenix.HTML.select
+
+```
+iex(1)> MyRefData.get("gender")
+[
+  [key: "Male", value: "male"],
+  [key: "Female", value: "female"],
+  [key: "Non-binary", value: "non-binary"]
+]
+```
+
+`MyRefData.get/2`
+        
