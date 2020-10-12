@@ -23,7 +23,7 @@ end
 
 ## Config
 
-`RefData` defaults to looking for `json` objects at teh `root` of teh project in a 
+`RefData` defaults to looking for `json` objects at the `root` of teh project in a 
 directory called `ref_data`. You can customise the path to your data by adding an entry
 in your `config.exs` file.
 
@@ -74,7 +74,7 @@ Assuming you `use RefData` in a module named `MyApp.MyRefData` your API is:
 `MyRefData.list_all_keys/0`
 It will list all keys for data held in memory
 
-```
+```elixir
 iex(1)> MyRefData.list_all_keys
 ["months", "gender"]
 ```
@@ -83,7 +83,7 @@ iex(1)> MyRefData.list_all_keys
 `MyRefData.get/1`
 When given a key will return a list of data in format required by Phoenix.HTML.select
 
-```
+```elixir
 iex(1)> MyRefData.get("gender")
 [
   [key: "Male", value: "male"],
