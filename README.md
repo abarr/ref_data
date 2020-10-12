@@ -23,7 +23,7 @@ end
 
 ## Config
 
-`RefData` defaults to looking for `json` objects at the `root` of teh project in a 
+`RefData` defaults to looking for `json` objects at the `root` of the project in a 
 directory called `ref_data`. You can customise the path to your data by adding an entry
 in your `config.exs` file.
 
@@ -81,7 +81,8 @@ iex(1)> MyRefData.list_all_keys
 
 
 `MyRefData.get/1`
-When given a key will return a list of data in format required by Phoenix.HTML.select
+When given a key it will return a list of data in the format required by Phoenix.HTML.select. If the 
+`json` defines grouped data it will return the appropriate format.
 
 ```elixir
 iex(1)> MyRefData.get("gender")
@@ -92,5 +93,40 @@ iex(1)> MyRefData.get("gender")
 ]
 ```
 
+```elixir
+iex(1)> MyRefData.get("countries")
+[
+  Asia: [
+    [key: "Australia", value: "australia"],
+    [key: "New Zealand", value: "new zealand"]
+  ],
+  Americas: [
+    [key: "Canada", value: "canada"], 
+    [key: "USA", value: "usa"]]
+]
+```
+
 `MyRefData.get/2`
         
+When given a key and a switch you are able to disable data by passing in a list of
+values to disable. YOu can also pass in `:raw` and get back the data directly from
+memory.
+
+```elixir
+iex(1)> MyRefData.get("gender", disabled: ["Female"])
+[
+  [key: "Male", value: "male"],
+  [key: "Female", value: "female", disabled: true],
+  [key: "Non-binary", value: "non-binary"]
+]
+```
+
+```elixir
+iex(1)> MyRefData.get("gender", :raw)
+[
+  {
+    "gender": ["Male", "Female", "Non-binary"]
+  }
+]
+```
+
