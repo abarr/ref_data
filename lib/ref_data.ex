@@ -1,45 +1,10 @@
 defmodule RefData do
   @moduledoc """
-
   RefData is a library for Phoenix projects that lets you provide reference data
   for your forms (e.g. Gender) without using a database table. It has been written
   as tool for POC development but can be used in PROD for fields that are common
   for all Users and do not form part of complex queries.
-
-
   """
-
-   @doc """
-    Returns a list of values for a given key. The default response
-    matches the list required by Phoenix.HTML.select
-
-    OPTIONS:
-      :raw - returns a list with a single tuple. The first value
-      in the tuple is the key and the second is a list of values
-      provided via json. This is the raw data stored in an ets table_name
-
-    ## Examples
-
-        iex> get("gender")
-        [
-          [key: "Male", value: "male"],
-          [key: "Female", value: "female"],
-          [key: "Non-binary", value: "non-binary"]
-        ]
-
-        iex> get("gender", [])
-        [
-          [key: "Male", value: "male"],
-          [key: "Female", value: "female"],
-          [key: "Non-binary", value: "non-binary"]
-        ]
-
-        iex> get("gender", [:raw])
-        [{"gender", ["Male", "Female", "Non-binary"]}]
-
-
-    """
-
 
   defmacro __using__(_opts) do
 

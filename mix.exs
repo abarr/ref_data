@@ -12,7 +12,10 @@ defmodule RefData.MixProject do
       package: package(),
       deps: deps(),
       name: "RefData",
-      source_url: "https://github.com/abarr/ref_data"
+      source_url: "https://github.com/abarr/ref_data",
+      docs: [
+        extras: ["README.md"]
+      ]
     ]
   end
 
