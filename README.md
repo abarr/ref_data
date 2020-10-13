@@ -5,9 +5,6 @@ for your forms (e.g. Gender) without using a database table. It has been written
 as tool for POC development but can be used in PROD for fields that are common 
 for all Users and do not form part of complex queries.
 
-You can use this link to see a demo.
-
-
 ## Installation
 
 The package can be installed by adding `ref_data` to your list of dependencies in 
