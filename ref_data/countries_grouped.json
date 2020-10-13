@@ -1,0 +1,7 @@
+{
+    "countries_grouped": 
+    [
+        { "Asia": ["Australia", "New Zealand"]},
+        { "Americas": ["Canada", "USA"]}
+    ]
+}
