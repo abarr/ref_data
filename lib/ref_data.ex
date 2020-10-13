@@ -71,25 +71,20 @@ defmodule RefData do
       """
       @callback get(key :: String) :: List
 
+
       @doc """
-      Returns teh raw data stored in memory for the provided key.
+      You can pass params to the get function. Keywords available
+      - :raw - Will return the raw data stored by RefData
+      - disabled: [] - Will return the data with the listed fields disabled
 
       ## Examples
 
-        iex(1)> MyRefData.get("gender", :raw)
+        iex(1)> MyRefData.get( "gender", :raw)
         [
           {
             "gender": ["Male", "Female", "Non-binary"]
           }
         ]
-      """
-      @callback get(key :: String, params :: keyword()) :: List
-
-      @doc """
-      You can disable values in the data by providing a list of
-      fields with the disabled switch.
-
-      ## Examples
 
         iex(1)> MyRefData.get("gender", disabled: ["Female"])
         [
@@ -97,8 +92,10 @@ defmodule RefData do
           [key: "Female", value: "female", disabled: true],
           [key: "Non-binary", value: "non-binary"]
         ]
+
       """
-      @callback get(String, disabled: List) :: List
+      @callback get(key :: String, :raw ) :: List
+      @callback get(key :: String, {:disabled, []} ) :: List
 
 
 end
