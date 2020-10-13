@@ -109,7 +109,7 @@ iex(1)> MyRefData.get("countries")
 `MyRefData.get/2`
         
 When given a key and a switch you are able to disable data by passing in a list of
-values to disable. YOu can also pass in `:raw` and get back the data directly from
+values to disable. You can also pass in `:raw` and get back the data directly from
 memory.
 
 ```elixir
