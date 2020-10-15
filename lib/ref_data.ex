@@ -7,9 +7,7 @@ defmodule RefData do
   """
 
   defmacro __using__(_opts) do
-
     quote do
-
       def list_all_keys() do
         GenServer.call(RefData.Server, {:all_keys})
       end
@@ -27,75 +25,70 @@ defmodule RefData do
       end
 
       def get(key, _), do: get(key)
-
     end
   end
 
-
   @doc """
-      Returns a list of all key values from the underlying data store.
-      It will match the keys used in the individual json files
+  Returns a list of all key values from the underlying data store.
+  It will match the keys used in the individual json files
 
-      ## Examples
+  ## Examples
 
-          iex> RefData.list_all_keys()
-          ["key1", "key2"]
+      iex> RefData.list_all_keys()
+      ["key1", "key2"]
 
-      """
+  """
   @callback list_all_keys() :: List
 
   @doc """
-      Returns a list of data for the provided key. If the json defines
-      grouped data it will return grouped data.
+  Returns a list of data for the provided key. If the json defines
+  grouped data it will return grouped data.
 
-      ## Examples
+  ## Examples
 
-          iex(1)> MyRefData.get("gender")
-          [
-            [key: "Male", value: "male"],
-            [key: "Female", value: "female"],
-            [key: "Non-binary", value: "non-binary"]
-          ]
+      iex(1)> MyRefData.get("gender")
+      [
+        [key: "Male", value: "male"],
+        [key: "Female", value: "female"],
+        [key: "Non-binary", value: "non-binary"]
+      ]
 
-          iex(1)> MyRefData.get("countries")
-          [
-            Asia: [
-              [key: "Australia", value: "australia"],
-              [key: "New Zealand", value: "new zealand"]
-            ],
-            Americas: [
-              [key: "Canada", value: "canada"],
-              [key: "USA", value: "usa"]]
-          ]
+      iex(1)> MyRefData.get("countries")
+      [
+        Asia: [
+          [key: "Australia", value: "australia"],
+          [key: "New Zealand", value: "new zealand"]
+        ],
+        Americas: [
+          [key: "Canada", value: "canada"],
+          [key: "USA", value: "usa"]]
+      ]
 
-      """
-      @callback get(key :: String) :: List
+  """
+  @callback get(key :: String) :: List
 
+  @doc """
+  You can pass params to the get function. Keywords available
+  - :raw - Will return the raw data stored by RefData
+  - disabled: [] - Will return the data with the listed fields disabled
 
-      @doc """
-      You can pass params to the get function. Keywords available
-      - :raw - Will return the raw data stored by RefData
-      - disabled: [] - Will return the data with the listed fields disabled
+  ## Examples
 
-      ## Examples
+    iex(1)> MyRefData.get( "gender", :raw)
+    [
+      {
+        "gender": ["Male", "Female", "Non-binary"]
+      }
+    ]
 
-        iex(1)> MyRefData.get( "gender", :raw)
-        [
-          {
-            "gender": ["Male", "Female", "Non-binary"]
-          }
-        ]
+    iex(1)> MyRefData.get("gender", disabled: ["Female"])
+    [
+      [key: "Male", value: "male"],
+      [key: "Female", value: "female", disabled: true],
+      [key: "Non-binary", value: "non-binary"]
+    ]
 
-        iex(1)> MyRefData.get("gender", disabled: ["Female"])
-        [
-          [key: "Male", value: "male"],
-          [key: "Female", value: "female", disabled: true],
-          [key: "Non-binary", value: "non-binary"]
-        ]
-
-      """
-      @callback get(key :: String, :raw ) :: List
-      @callback get(key :: String, {:disabled, []} ) :: List
-
-
+  """
+  @callback get(key :: String, :raw) :: List
+  @callback get(key :: String, {:disabled, []}) :: List
 end
