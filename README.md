@@ -1,4 +1,6 @@
-# RefData
+# RefData  ![Elixir CI](https://github.com/abarr/ref_data/workflows/Elixir%20CI/badge.svg?branch=master)
+
+
 
 RefData is a library for Phoenix projects that lets you provide reference data 
 for your forms (e.g. Gender) without using a database table. It has been written 
