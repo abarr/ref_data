@@ -15,7 +15,7 @@ The package can be installed by adding `ref_data` to your list of dependencies i
 ```elixir
 def deps do
   [
-    {:ref_data, "~> 0.1.0"}
+    {:ref_data, "~> X.X.X"}
   ]
 end
 ```
