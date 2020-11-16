@@ -84,7 +84,7 @@ defmodule RefData.Server do
     return_grouped_values(t, acc)
   end
 
-
+  defp return_values([]), do: []
   defp return_values([{_key, value}]) do
     Enum.into(value, [], fn v -> {v, String.downcase(v)} end)
     |> Enum.into([], fn {k, v} -> [key: k, value: v] end)
