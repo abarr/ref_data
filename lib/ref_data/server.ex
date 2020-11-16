@@ -100,6 +100,7 @@ defmodule RefData.Server do
     end
   end
 
+  defp is_grouped?([]), do: false
   defp is_grouped?([{_key, value}]) do
     value
     |> List.first()
