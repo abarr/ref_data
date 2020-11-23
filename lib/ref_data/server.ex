@@ -33,7 +33,7 @@ defmodule RefData.Server do
     case :ets.lookup(table_name, key) do
       [{_key, value}] ->
         list =
-          Enum.into(value, [], fn v -> {String.capitalize(v), String.downcase(v)} end)
+          Enum.into(value, [], fn v -> {String.capitalize(v), String.capitalize(v)} end)
           |> Enum.into([], fn {k, v} ->
             case Enum.member?(disabled_list, k) do
               true -> [key: k, value: v, disabled: true]
