@@ -17,10 +17,10 @@ defmodule RefDataTest do
     assert {:reply,
             [
               Asia: [
-                [key: "Australia", value: "australia"],
-                [key: "New Zealand", value: "new zealand"]
+                [key: "Australia", value: "Australia"],
+                [key: "New Zealand", value: "New Zealand"]
               ],
-              Americas: [[key: "Canada", value: "canada"], [key: "USA", value: "usa"]]
+              Americas: [[key: "Canada", value: "Canada"], [key: "USA", value: "USA"]]
             ], :ref_data} == resp
   end
 
@@ -29,20 +29,20 @@ defmodule RefDataTest do
 
     assert {:reply,
             [
-              [key: "Male", value: "male", disabled: true],
-              [key: "Female", value: "female"],
-              [key: "Non-binary", value: "non-binary"]
+              [key: "Male", value: "Male", disabled: true],
+              [key: "Female", value: "Female"],
+              [key: "Non-binary", value: "Non-binary"]
             ], :ref_data} == resp
   end
 
   test "Get the raw data for one of the data definitions with disabled list - lower case" do
-    resp = RefData.Server.handle_call({"gender", disabled: ["female"]}, nil, :ref_data)
+    resp = RefData.Server.handle_call({"gender", disabled: ["Female"]}, nil, :ref_data)
 
     assert {:reply,
             [
-              [key: "Male", value: "male"],
-              [key: "Female", value: "female", disabled: true],
-              [key: "Non-binary", value: "non-binary"]
+              [key: "Male", value: "Male"],
+              [key: "Female", value: "Female", disabled: true],
+              [key: "Non-binary", value: "Non-binary"]
             ], :ref_data} == resp
   end
 

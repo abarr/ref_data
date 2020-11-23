@@ -33,7 +33,7 @@ defmodule RefData.Server do
     case :ets.lookup(table_name, key) do
       [{_key, value}] ->
         list =
-          Enum.into(value, [], fn v -> {String.capitalize(v), String.capitalize(v)} end)
+          Enum.into(value, [], fn v -> {v, v} end)
           |> Enum.into([], fn {k, v} ->
             case Enum.member?(disabled_list, k) do
               true -> [key: k, value: v, disabled: true]
@@ -77,7 +77,7 @@ defmodule RefData.Server do
       acc ++
         [
           "#{key}":
-            Enum.into(values, [], fn v -> {v, String.downcase(v)} end)
+            Enum.into(values, [], fn v -> {v, v} end)
             |> Enum.into([], fn {k, v} -> [key: k, value: v] end)
         ]
 
@@ -86,7 +86,7 @@ defmodule RefData.Server do
 
   defp return_values([]), do: []
   defp return_values([{_key, value}]) do
-    Enum.into(value, [], fn v -> {v, String.downcase(v)} end)
+    Enum.into(value, [], fn v -> {v, v} end)
     |> Enum.into([], fn {k, v} -> [key: k, value: v] end)
   end
 
@@ -168,6 +168,6 @@ defmodule RefData.Server do
   end
 
   defp capitalise_list(list) do
-    Enum.into(list, [], fn v -> String.capitalize(v) end)
+    Enum.into(list, [], fn v -> v end)
   end
 end
