@@ -78,8 +78,8 @@ wish to support keys with different values you can provide the details:
 { 
   "name": "active", 
   "data": [
-    ["key": "Enable", "value": "true"], 
-    ["key": "Disable", "value": "false"]
+    {"key": "Enable", "value": "true"}, 
+    {"key": "Disable", "value": "false"}
   ]
 }
 ```
