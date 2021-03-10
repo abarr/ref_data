@@ -39,7 +39,7 @@ defmodule RefData.MixProject do
     [
       {:jason, "~> 1.2"},
       {:ex_doc, "~> 0.22", only: :dev, runtime: false},
-      {:credo, "~> 1.5"}
+      {:credo, "~> 1.5", only: [:dev, :test], runtime: false}
     ]
   end
 
