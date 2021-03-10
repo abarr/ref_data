@@ -12,7 +12,7 @@ The library is a supervised `GenServer` that starts as its own application when 
 applications starts. It will hold all of your defined reference data in memory for fast 
 retrieval when needed. 
 
-Version 2 is a breaking change see CHANGELOG
+Version 0.2.0 is a breaking change see CHANGELOG
 
 ## Installation
 
@@ -22,7 +22,7 @@ The package can be installed by adding `ref_data` to your list of dependencies i
 ```elixir
 def deps do
   [
-    {:ref_data, "~> 2.0.0"}
+    {:ref_data, "~> 0.2.0"}
   ]
 end
 ```
