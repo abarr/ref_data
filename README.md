@@ -22,7 +22,7 @@ The package can be installed by adding `ref_data` to your list of dependencies i
 ```elixir
 def deps do
   [
-    {:ref_data, "~> 0.2.0"}
+    {:ref_data, "~> 0.2.1"}
   ]
 end
 ```
