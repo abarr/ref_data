@@ -31,7 +31,7 @@ end
 
 `RefData` defaults to looking for `json` objects at the `root` of the project in a 
 directory called `ref_data`. You can customise the path to your data by adding an entry
-in your `config.exs` file.
+in your `config.exs` file. `RefData` expects one object per file.
 
 ```elixir
 use Mix.Config
@@ -52,6 +52,7 @@ that uses the type of reference data as the key and a list of values is generate
 `RefData` will convert the definitions into `Maps` e.g. 
 
 ```json
+/ref_data/gender.json
 { 
   "gender": [
     "Male", 
@@ -59,7 +60,7 @@ that uses the type of reference data as the key and a list of values is generate
   ]
 }
 ```
-Is converted into a `map` and held in state by teh `GenServer`:
+Is converted into a `map` and held in state by the `GenServer`:
 
 ```elixir
 %{ 
@@ -75,6 +76,7 @@ Is converted into a `map` and held in state by teh `GenServer`:
 wish to support keys with different values you can provide the details: 
 
 ```json
+/ref_data/active.json
 { 
   "name": "active", 
   "data": [
@@ -96,9 +98,10 @@ This will be standardised as a `map` and stored in state:
 ```
 
 You can also define grouped data by creating a list of key value pairs of data. This can be doen using 
-teh simple `json` syntax:
+the simple `json` syntax:
 
 ```json
+/ref_data/countries.json
 {
     "countries_grouped": 
     [
@@ -124,9 +127,10 @@ teh simple `json` syntax:
 }
 ```
 
-Alternatively, you can use teh more detailed `json` definition to customise the values:
+Alternatively, you can use the more detailed `json` definition to customise the values:
 
 ```json
+/ref_data/countries.json
 {
     "name": "countries_grouped",
     "data": [
