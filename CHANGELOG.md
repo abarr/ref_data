@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing at this time
+
+## [0.2.0] - 2021-03-10
+
 ### Added
 - Supports more detailed `json` definitions to allow developers to add custom values 
 
