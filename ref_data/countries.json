@@ -1,5 +1,6 @@
 {
-    "countries": [
+    "name": "countries",
+    "data": [
         "Australia",
         "New Zealand",
         "Canada"

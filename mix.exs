@@ -4,7 +4,7 @@ defmodule RefData.MixProject do
   def project do
     [
       app: :ref_data,
-      version: "0.1.6",
+      version: "0.2.0",
       elixir: "~> 1.10",
       build_embedded: Mix.env() == :prod,
       start_permanent: Mix.env() == :prod,
@@ -31,7 +31,8 @@ defmodule RefData.MixProject do
   defp deps do
     [
       {:jason, "~> 1.2"},
-      {:ex_doc, "~> 0.22", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.22", only: :dev, runtime: false},
+      {:credo, "~> 1.5"}
     ]
   end
 

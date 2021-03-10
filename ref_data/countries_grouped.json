@@ -1,7 +1,13 @@
 {
-    "countries_grouped": 
-    [
-        { "Asia": ["Australia", "New Zealand"]},
-        { "Americas": ["Canada", "USA"]}
+    "name": "countries_grouped",
+    "data": [
+        { "Asia": [
+            {"key":"Australia", "value": "Australia"},
+            {"key":"New Zealand", "value": "New Zealand"}]
+        },
+        { "Americas": [
+            {"key":"Canada", "value": "Canada"}, 
+            {"key":"USA", "value": "USA"}]
+        }
     ]
 }

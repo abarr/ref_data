@@ -3,28 +3,22 @@ defmodule RefData do
   RefData is a library for Phoenix projects that lets you provide reference data
   for your forms (e.g. Gender) without using a database table. It has been written
   as tool for POC development but can be used in PROD for fields that are common
-  for all Users and do not form part of complex queries.
+  and do not form part of complex queries.
   """
 
   defmacro __using__(_opts) do
     quote do
       def list_all_keys() do
-        GenServer.call(RefData.Server, {:all_keys})
+        GenServer.call(RefData.Server, {:get_all_keys})
       end
 
       def get(key) do
-        GenServer.call(RefData.Server, key)
-      end
-
-      def get(key, :raw) do
-        GenServer.call(RefData.Server, {key, :raw})
+        GenServer.call(RefData.Server, {key})
       end
 
       def get(key, disabled: list) do
         GenServer.call(RefData.Server, {key, disabled: list})
       end
-
-      def get(key, _), do: get(key)
     end
   end
 
@@ -48,20 +42,20 @@ defmodule RefData do
 
       iex(1)> MyRefData.get("gender")
       [
-        [key: "Male", value: "male"],
-        [key: "Female", value: "female"],
+        [key: "Male", value: "Male"],
+        [key: "Female", value: "Female"],
         [key: "Non-binary", value: "non-binary"]
       ]
 
       iex(1)> MyRefData.get("countries")
       [
         Asia: [
-          [key: "Australia", value: "australia"],
-          [key: "New Zealand", value: "new zealand"]
+          [key: "Australia", value: "Australia"],
+          [key: "New Zealand", value: "New Zealand"]
         ],
         Americas: [
-          [key: "Canada", value: "canada"],
-          [key: "USA", value: "usa"]]
+          [key: "Canada", value: "Canada"],
+          [key: "USA", value: "USA"]]
       ]
 
   """
@@ -69,26 +63,17 @@ defmodule RefData do
 
   @doc """
   You can pass params to the get function. Keywords available
-  - :raw - Will return the raw data stored by RefData
   - disabled: [] - Will return the data with the listed fields disabled
 
-  ## Examples
-
-    iex(1)> MyRefData.get( "gender", :raw)
-    [
-      {
-        "gender": ["Male", "Female", "Non-binary"]
-      }
-    ]
+  ## Example
 
     iex(1)> MyRefData.get("gender", disabled: ["Female"])
     [
-      [key: "Male", value: "male"],
-      [key: "Female", value: "female", disabled: true],
-      [key: "Non-binary", value: "non-binary"]
+      [key: "Male", value: "Male"],
+      [key: "Female", value: "Female", disabled: true],
+      [key: "Non-binary", value: "Non-binary"]
     ]
 
   """
-  @callback get(key :: String, :raw) :: List
   @callback get(key :: String, {:disabled, []}) :: List
 end

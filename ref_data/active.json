@@ -1,0 +1,7 @@
+{
+    "name": "active",
+    "data": [
+        {"key":"Enable", "value": "true"},
+        {"key":"Disable", "value": "false"}
+    ]
+}
