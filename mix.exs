@@ -11,6 +11,7 @@ defmodule RefData.MixProject do
       description: description(),
       package: package(),
       deps: deps(),
+      aliases: aliases(),
       name: "RefData",
       source_url: "https://github.com/abarr/ref_data",
       docs: [
@@ -24,6 +25,12 @@ defmodule RefData.MixProject do
     [
       extra_applications: [:logger],
       mod: {RefData.Application, []}
+    ]
+  end
+
+  defp aliases do
+    [
+      "test.ci": ["test --color --max-cases=10"],
     ]
   end
 
