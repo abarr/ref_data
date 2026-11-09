@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Immutable catalogs loaded with `RefData.load/1` and selected with `source:`.
+- Submitted-value validation with canonical JSON values and explicit errors for
+  unknown, disabled and ambiguous choices, including nested groups.
+- Concurrent-read and storage lifecycle tests.
 - Direct lookup API with `fetch/2`, `get!/2` and configurable server selection.
 - Explicit supervision and independent named or unnamed instances.
 - File-specific validation errors and duplicate dataset detection.
@@ -19,7 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update all development dependencies and the lockfile.
 - Represent grouped options as string-labelled tuples instead of atom-keyed lists.
 - Return `nil` for missing `get` lookups without crashing the shared server.
-- Store datasets in a map and preserve option order.
+- Use protected ETS tables for shared datasets; local reads bypass the owner mailbox.
+- Keep immutable catalog lookups process-free and preserve option order.
+- Publish tables through a supervised Registry and resolve restarted instances by PID.
+- Preserve legacy server messages and remote-node lookups.
 - Document release-safe paths, current configuration syntax and migration steps.
 
 ### Fixed

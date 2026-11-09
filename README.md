@@ -4,6 +4,8 @@
 
 RefData loads JSON reference datasets into memory for form options and other lookups,
 without a database. It uses Elixir's built-in `JSON` module and has no runtime dependencies.
+Use an immutable catalog for standalone lookups, or supervised ETS storage shared by
+concurrent callers. The same datasets validate submitted form values.
 
 ## Requirements and installation
 
@@ -52,7 +54,33 @@ children = [
 Query it with `RefData.get("countries", server: MyApp.ReferenceData)`. Instances have
 independent data. Use different names for multiple instances, or `name: nil` for an
 unnamed process and query it by PID. Data is loaded at startup; restart an instance
-to load changed files.
+to load changed files. Local lookups read directly from a protected ETS table;
+they do not send requests to the storage server. The server owns the table and
+loads its contents before publishing it to readers. Stopping the server deletes
+the table. Reads by name resolve the current instance after a restart. Reads during
+shutdown or startup can exit with `:noproc`; this is distinct from a missing dataset.
+Remote server lookups retain message-based access because ETS is local to a node.
+
+## Standalone catalogs
+
+Load a directory once and pass the returned immutable snapshot to ordinary functions:
+
+```elixir
+{:ok, catalog} = RefData.load("priv/ref_data")
+
+RefData.list_all_keys(catalog)
+RefData.get("countries", source: catalog)
+RefData.validate_value("countries", "Australia", source: catalog)
+```
+
+Loading and querying a catalog does not require a server, a Registry or an ETS table.
+A catalog keeps its original data even if the files change; call `RefData.load/1`
+again to obtain a new snapshot. For a catalog-only application, set
+`config :ref_data, start_default_server: false` to disable the compatibility server.
+
+Lookup and validation functions accept either `source: catalog`, `source: server`
+or the existing `server: server` option. Do not supply both `:source` and `:server`.
+`RefData.load/1` returns `{:error, reason}` for invalid files, just like server startup.
 
 ## Data formats
 
@@ -148,7 +176,59 @@ defmodule MyApp.CustomRefData do
 end
 ```
 
-Both wrappers expose `list_all_keys/0`, `get/1,2`, `fetch/1,2` and `get!/1,2`.
+Both wrappers expose `list_all_keys/0`, `get/1,2`, `fetch/1,2`, `get!/1,2`,
+`validate_value/2,3` and `valid_value?/2,3`. Pass `source: catalog` to override a
+wrapper's server for a particular lookup or validation.
+
+## Validating submitted values
+
+`validate_value/3` checks a single submitted value against the dataset's **values**,
+including options nested inside groups. It returns the canonical value for an
+allowed choice. Labels are not accepted unless they are also a stored value.
+
+For the `status` dataset above:
+
+```elixir
+RefData.validate_value("status", "true")
+# => {:ok, true}
+
+RefData.validate_value("status", "false")
+# => {:ok, false}
+
+RefData.validate_value("status", "Enabled")
+# => {:error, :invalid_value}
+
+RefData.validate_value("status", "true", disabled: ["Enabled"])
+# => {:error, :disabled_value}
+
+RefData.valid_value?("status", "false")
+# => true
+```
+
+Browser form fields arrive as strings. A string must exactly equal the string
+representation of a known value: `"1"` can match the integer `1`, but `"01"`,
+`"1.0"` and `" 1"` do not. Numeric and boolean inputs must match their stored types
+exactly. Nulls, lists and maps are invalid single values. Validate each choice
+separately for a multi-select field.
+
+Pass the same disabled labels when rendering options and validating submissions.
+Rendering with `disabled:` does not change the shared data or establish a permanent
+validation rule. If several labels share a value, it remains valid when at least
+one matching label is enabled.
+
+A string that matches distinct enabled values, such as JSON `true` and `"true"`,
+returns `{:error, :ambiguous_value}`. Choose unambiguous codes for form fields.
+An unknown dataset returns `{:error, :unknown_dataset}`. `valid_value?/3` returns
+`false` for any validation error, while unavailable shared storage still exits.
+
+A typical form handler can use the returned canonical value:
+
+```elixir
+case RefData.validate_value("status", params["status"], disabled: disabled_labels) do
+  {:ok, value} -> {:ok, Map.put(params, "status", value)}
+  {:error, reason} -> {:error, {:status, reason}}
+end
+```
 
 ## Migrating from 0.2
 

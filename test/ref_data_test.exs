@@ -98,5 +98,8 @@ defmodule RefDataTest do
     assert {:ok, data} = Wrapper.fetch("active")
     assert Wrapper.get("active") == data
     assert Wrapper.get!("active") == data
+    assert Wrapper.validate_value("active", "true") == {:ok, "true"}
+    assert Wrapper.valid_value?("active", "true")
+    refute Wrapper.valid_value?("active", "Enable")
   end
 end

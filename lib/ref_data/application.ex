@@ -11,6 +11,7 @@ defmodule RefData.Application do
         []
       end
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: RefData.Supervisor)
+    children = [{Registry, keys: :unique, name: RefData.Registry} | children]
+    Supervisor.start_link(children, strategy: :rest_for_one, name: RefData.Supervisor)
   end
 end

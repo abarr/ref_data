@@ -1,17 +1,31 @@
 defmodule RefData do
   @moduledoc """
-  Loads JSON reference datasets into memory for form options and other lookups.
+  Loads JSON reference datasets for form options and submitted-value validation.
 
-  Call this module directly or use `use RefData` to define a compatible wrapper.
+  Use supervised storage for shared, direct ETS reads, or load an immutable
+  `RefData.Catalog` and pass it as `source: catalog` without starting a server.
   See the README for data formats, configuration and supervision examples.
   """
 
-  @type option :: [key: String.t(), value: String.t() | number() | boolean(), disabled: boolean()]
+  alias RefData.{Catalog, Data, Options, Store}
+
+  @type value :: String.t() | number() | boolean()
+  @type option :: [key: String.t(), value: value(), disabled: boolean()]
   @type group :: {String.t(), [option() | group()]}
   @type options :: [option() | group()]
-  @type lookup_options :: [disabled: [String.t()], server: GenServer.server()]
+  @type source :: Catalog.t() | GenServer.server()
+  @type lookup_options :: [disabled: [String.t()], server: GenServer.server(), source: source()]
+  @type validation_error :: :unknown_dataset | :invalid_value | :disabled_value | :ambiguous_value
 
-  @doc "Starts a reference data server. Requires `:path`; accepts `:name` to override the default server name."
+  @doc "Loads and validates a directory into an immutable catalog without starting a server."
+  @spec load(Path.t()) :: {:ok, Catalog.t()} | {:error, String.t()}
+  def load(path) do
+    with {:ok, datasets} <- Data.load(path) do
+      {:ok, %Catalog{datasets: datasets}}
+    end
+  end
+
+  @doc "Starts shared storage. Requires `:path`; accepts `:name` to override the default server name."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: RefData.Server.start_link(opts)
 
@@ -20,26 +34,36 @@ defmodule RefData do
     %{id: Keyword.get(opts, :name) || __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
-  @doc "Returns the dataset names in alphabetical order."
-  @spec list_all_keys(GenServer.server()) :: [String.t()]
-  def list_all_keys(server \\ RefData.Server), do: GenServer.call(server, {:get_all_keys})
+  @doc "Returns dataset names in alphabetical order from a server or loaded catalog."
+  @spec list_all_keys(source()) :: [String.t()]
+  def list_all_keys(source \\ RefData.Server)
+  def list_all_keys(%Catalog{} = catalog), do: Catalog.keys(catalog)
+  def list_all_keys(server), do: Store.keys(server)
 
-  @doc "Returns `{:ok, options}` or `:error` when the dataset does not exist."
+  @doc """
+  Returns `{:ok, options}` or `:error` when the dataset does not exist.
+
+  Local server lookups read directly from ETS. An unavailable server exits with
+  `:noproc`, rather than being treated as a missing dataset. Remote servers use
+  messages because ETS tables cannot be read across nodes.
+  """
   @spec fetch(String.t(), lookup_options()) :: {:ok, options()} | :error
   def fetch(key, opts \\ []) when is_binary(key) do
     validate_options!(opts)
 
-    case GenServer.call(Keyword.get(opts, :server, RefData.Server), {:fetch, key}) do
-      {:ok, data} -> {:ok, disable_options(data, Keyword.get(opts, :disabled, []))}
+    case fetch_source(source(opts), key) do
+      {:ok, data} -> {:ok, Options.disable(data, Keyword.get(opts, :disabled, []))}
       :error -> :error
     end
   end
 
   @doc """
-  Returns the dataset options, or `nil` if the dataset does not exist.
+  Returns dataset options, or `nil` if the dataset does not exist.
 
   `:disabled` lists option labels (the `key` fields), including labels in groups.
-  `:server` selects a named server or PID. Neither option changes the stored data.
+  `:source` selects a loaded catalog or server. `:server` remains supported as an
+  alternative for server selection; supplying both options raises `ArgumentError`.
+  Neither option changes the stored data.
   """
   @spec get(String.t(), lookup_options()) :: options() | nil
   def get(key, opts \\ []) do
@@ -58,29 +82,54 @@ defmodule RefData do
     end
   end
 
+  @doc """
+  Validates a submitted option value and returns its canonical JSON scalar value.
+
+  Strings are matched against the string representation of known values, so a
+  browser submission of `"true"` can return `{:ok, true}`. Numeric and boolean
+  inputs must match exactly, including type. Unknown values are never parsed or
+  converted speculatively; `nil`, lists and maps are invalid.
+
+  Matching uses option **values**, not labels, and recurses through groups. Options
+  whose labels appear in `:disabled` are excluded. A duplicated value is allowed
+  if any matching option is enabled. If a string represents several distinct
+  enabled values (for example `true` and `"true"`), it is rejected as ambiguous.
+
+  Returns `{:error, reason}` for an unknown dataset, invalid value, disabled value
+  or ambiguous value. An unavailable server still exits, as with `fetch/2`.
+  """
+  @spec validate_value(String.t(), term(), lookup_options()) ::
+          {:ok, value()} | {:error, validation_error()}
+  def validate_value(key, submitted, opts \\ []) when is_binary(key) do
+    validate_options!(opts)
+
+    case fetch_source(source(opts), key) do
+      {:ok, data} -> Options.validate(data, submitted, Keyword.get(opts, :disabled, []))
+      :error -> {:error, :unknown_dataset}
+    end
+  end
+
+  @doc "Returns whether a submitted value is valid and enabled. Accepts the same options as `validate_value/3`."
+  @spec valid_value?(String.t(), term(), lookup_options()) :: boolean()
+  def valid_value?(key, submitted, opts \\ []) do
+    match?({:ok, _}, validate_value(key, submitted, opts))
+  end
+
   @doc false
-  def disable_options(data, []), do: data
+  defdelegate disable_options(data, disabled), to: Options, as: :disable
 
-  def disable_options(data, disabled) do
-    disabled = MapSet.new(disabled)
-    disable(data, disabled)
-  end
-
-  defp disable(data, disabled) do
-    Enum.map(data, fn
-      {label, values} ->
-        {label, disable(values, disabled)}
-
-      [key: key, value: value] = option ->
-        if MapSet.member?(disabled, key),
-          do: option ++ [disabled: true],
-          else: [key: key, value: value]
-    end)
-  end
+  defp source(opts), do: Keyword.get(opts, :source, Keyword.get(opts, :server, RefData.Server))
+  defp fetch_source(%Catalog{} = catalog, key), do: Catalog.fetch(catalog, key)
+  defp fetch_source(server, key), do: Store.fetch(server, key)
 
   defp validate_options!(opts) do
     unless Keyword.keyword?(opts), do: raise(ArgumentError, "expected keyword options")
-    Keyword.validate!(opts, [:disabled, :server])
+    Keyword.validate!(opts, [:disabled, :server, :source])
+
+    if Keyword.has_key?(opts, :source) and Keyword.has_key?(opts, :server) do
+      raise ArgumentError, "use either :source or :server, not both"
+    end
+
     disabled = Keyword.get(opts, :disabled, [])
 
     unless is_list(disabled) and Enum.all?(disabled, &is_binary/1) do
@@ -88,21 +137,27 @@ defmodule RefData do
     end
   end
 
-  @doc "Defines lookup functions delegating to RefData. Accepts a `:server` option."
+  @doc "Defines lookup and validation functions delegating to RefData. Accepts a `:server` option."
   defmacro __using__(opts) do
     server = Keyword.get(opts, :server, RefData.Server)
 
     quote do
       def list_all_keys, do: RefData.list_all_keys(unquote(server))
+      def get(key, opts \\ []), do: RefData.get(key, ref_data_options(opts))
+      def get!(key, opts \\ []), do: RefData.get!(key, ref_data_options(opts))
+      def fetch(key, opts \\ []), do: RefData.fetch(key, ref_data_options(opts))
 
-      def get(key, opts \\ []),
-        do: RefData.get(key, Keyword.put_new(opts, :server, unquote(server)))
+      def validate_value(key, submitted, opts \\ []),
+        do: RefData.validate_value(key, submitted, ref_data_options(opts))
 
-      def get!(key, opts \\ []),
-        do: RefData.get!(key, Keyword.put_new(opts, :server, unquote(server)))
+      def valid_value?(key, submitted, opts \\ []),
+        do: RefData.valid_value?(key, submitted, ref_data_options(opts))
 
-      def fetch(key, opts \\ []),
-        do: RefData.fetch(key, Keyword.put_new(opts, :server, unquote(server)))
+      defp ref_data_options(opts) do
+        if Keyword.has_key?(opts, :source),
+          do: opts,
+          else: Keyword.put_new(opts, :server, unquote(server))
+      end
     end
   end
 end
