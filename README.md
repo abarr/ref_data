@@ -4,8 +4,10 @@
 
 RefData loads JSON reference datasets into memory for form options and other lookups,
 without a database. It uses Elixir's built-in `JSON` module and has no runtime dependencies.
-Use an immutable catalog for standalone lookups, or supervised ETS storage shared by
-concurrent callers. The same datasets validate submitted form values.
+By default, RefData loads datasets into shared ETS storage at application startup.
+Lookups read directly from ETS, and the same datasets validate submitted form values.
+Standalone immutable catalogs are also available when you want to load and pass data
+explicitly.
 
 ## Requirements and installation
 
@@ -18,11 +20,42 @@ def deps do
 end
 ```
 
-## Configuration and releases
+## Choosing how to store data
 
-For compatibility, RefData starts a default server and reads `*.json` files from
-`ref_data/` relative to the working directory. An empty directory is valid; a missing
-directory or invalid file stops startup with an error identifying the path.
+**Use shared ETS storage for a Phoenix app or any application where several parts
+need the same datasets.** Controllers, LiveViews and background jobs can look up
+options by name without receiving a catalog as an argument. This is the default:
+`RefData.get("countries")` and `RefData.validate_value("countries", value)` use ETS.
+
+**Use a standalone catalog for a script, an isolated job, a test, or a function that
+should receive its reference data explicitly.** Load a snapshot and pass it to the
+functions that need it using `source: catalog`.
+
+| | Shared ETS storage (default) | Standalone catalog |
+| --- | --- | --- |
+| Best fit | Reference data used throughout an application | Self-contained tasks and explicit data passing |
+| Where data lives | An ETS table shared by callers on one node | An immutable Elixir map held by the caller |
+| Loading | Automatically at startup, or through an explicitly supervised instance | When you call `RefData.load/1` |
+| Reading | Direct ETS reads, without lookup messages to the owner | Ordinary function calls using the supplied catalog |
+| Lifecycle | A supervised GenServer owns the table and reloads it after a crash | The caller holds the snapshot; no dataset server is required |
+| Loading changed files | Restart the storage instance | Load a new catalog |
+
+Both options parse JSON when loading and keep the data in memory for subsequent
+lookups. Both use the same data formats, grouping, disabled-option handling and
+submitted-value validation. Choose based on how you want to share and manage the
+data; a standalone catalog does not replace the shared default implicitly.
+
+## Shared ETS storage (default)
+
+RefData starts a supervised owner that loads `*.json` files from `ref_data/` relative
+to the working directory into ETS. The GenServer manages loading and table ownership;
+local reads bypass its mailbox. You do not need to call `RefData.load/1` or pass a
+`:source` option for the default workflow.
+
+An empty directory is valid; a missing directory or invalid file stops startup with
+an error identifying the path.
+
+### Configuration and releases
 
 For releases, put datasets in your application's `priv/ref_data/` directory so Mix
 bundles them with the application. Resolve the path at runtime in `config/runtime.exs`:
@@ -61,9 +94,20 @@ the table. Reads by name resolve the current instance after a restart. Reads dur
 shutdown or startup can exit with `:noproc`; this is distinct from a missing dataset.
 Remote server lookups retain message-based access because ETS is local to a node.
 
-## Standalone catalogs
+## Standalone catalogs (opt-in)
 
-Load a directory once and pass the returned immutable snapshot to ordinary functions:
+Choose this option when you want to hold a snapshot explicitly, such as inside a
+script or an isolated job. If your application only uses catalogs, disable the
+automatically started ETS owner in your configuration first:
+
+```elixir
+import Config
+
+config :ref_data, start_default_server: false
+```
+
+Then load a directory once and pass the returned immutable snapshot to ordinary
+functions:
 
 ```elixir
 {:ok, catalog} = RefData.load("priv/ref_data")
@@ -75,8 +119,10 @@ RefData.validate_value("countries", "Australia", source: catalog)
 
 Loading and querying a catalog does not require a server, a Registry or an ETS table.
 A catalog keeps its original data even if the files change; call `RefData.load/1`
-again to obtain a new snapshot. For a catalog-only application, set
-`config :ref_data, start_default_server: false` to disable the compatibility server.
+again to obtain a new snapshot. Calling `RefData.load/1` does not populate or switch
+the shared ETS storage: pass `source: catalog` for each catalog lookup or validation.
+You can also use catalogs alongside the default ETS storage; leave the default
+owner enabled when both are needed.
 
 Lookup and validation functions accept either `source: catalog`, `source: server`
 or the existing `server: server` option. Do not supply both `:source` and `:server`.
@@ -125,7 +171,7 @@ Group labels remain strings; no atoms are created from JSON labels.
 
 ## Lookups
 
-With the default server:
+With the default shared ETS storage:
 
 ```elixir
 RefData.list_all_keys()
