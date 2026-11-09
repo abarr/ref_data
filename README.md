@@ -4,14 +4,15 @@
 
 RefData loads JSON reference datasets into memory for form options and other lookups,
 without a database. It uses Elixir's built-in `JSON` module and has no runtime dependencies.
-By default, RefData loads datasets into shared ETS storage at application startup.
-Lookups read directly from ETS, and the same datasets validate submitted form values.
+Once a path is configured, RefData loads datasets into shared ETS storage at application
+startup. Lookups read directly from ETS, and the same datasets validate submitted form
+values and supply labels for stored values.
 Standalone immutable catalogs are also available when you want to load and pass data
 explicitly.
 
 ## Requirements and installation
 
-Elixir 1.20 or later and a compatible Erlang/OTP version are required. Development is
+Elixir 1.18 or later and a compatible Erlang/OTP version are required. Development is
 pinned to Elixir 1.20.5 and OTP 29.1.2 in `.tool-versions`.
 
 ```elixir
@@ -47,18 +48,10 @@ data; a standalone catalog does not replace the shared default implicitly.
 
 ## Shared ETS storage (default)
 
-RefData starts a supervised owner that loads `*.json` files from `ref_data/` relative
-to the working directory into ETS. The GenServer manages loading and table ownership;
-local reads bypass its mailbox. You do not need to call `RefData.load/1` or pass a
-`:source` option for the default workflow.
-
-An empty directory is valid; a missing directory or invalid file stops startup with
-an error identifying the path.
-
-### Configuration and releases
-
-For releases, put datasets in your application's `priv/ref_data/` directory so Mix
-bundles them with the application. Resolve the path at runtime in `config/runtime.exs`:
+Tell RefData where your datasets are and it starts a supervised owner that loads the
+`*.json` files in that directory into ETS. Put them in your application's
+`priv/ref_data/` directory so Mix bundles them into releases, and resolve the path at
+runtime in `config/runtime.exs`:
 
 ```elixir
 import Config
@@ -67,16 +60,20 @@ config :ref_data,
   path: Application.app_dir(:my_app, "priv/ref_data")
 ```
 
-Alternatively, let your application supervise RefData explicitly. Disable the default
-server in your configuration:
+The GenServer manages loading and table ownership; local reads bypass its mailbox.
+You do not need to call `RefData.load/1` or pass a `:source` option for this workflow.
 
-```elixir
-import Config
+An empty directory is valid; a missing directory or invalid file stops startup with
+an error identifying the path. Without a configured `:path` no default server is
+started, and lookups that do not name a `:source` or `:server` exit with `:noproc`.
 
-config :ref_data, start_default_server: false
-```
+Datasets are trusted input: files are read whole, with no size limits. Point RefData
+only at directories your application controls, never at user-uploaded files.
 
-Add an instance to your application's supervision tree:
+### Supervising it yourself
+
+Alternatively, leave `:path` unset and add an instance to your application's
+supervision tree:
 
 ```elixir
 children = [
@@ -97,17 +94,8 @@ Remote server lookups retain message-based access because ETS is local to a node
 ## Standalone catalogs (opt-in)
 
 Choose this option when you want to hold a snapshot explicitly, such as inside a
-script or an isolated job. If your application only uses catalogs, disable the
-automatically started ETS owner in your configuration first:
-
-```elixir
-import Config
-
-config :ref_data, start_default_server: false
-```
-
-Then load a directory once and pass the returned immutable snapshot to ordinary
-functions:
+script or an isolated job. No configuration is needed. Load a directory once and
+pass the returned immutable snapshot to ordinary functions:
 
 ```elixir
 {:ok, catalog} = RefData.load("priv/ref_data")
@@ -121,8 +109,7 @@ Loading and querying a catalog does not require a server, a Registry or an ETS t
 A catalog keeps its original data even if the files change; call `RefData.load/1`
 again to obtain a new snapshot. Calling `RefData.load/1` does not populate or switch
 the shared ETS storage: pass `source: catalog` for each catalog lookup or validation.
-You can also use catalogs alongside the default ETS storage; leave the default
-owner enabled when both are needed.
+You can also use catalogs alongside the shared ETS storage.
 
 Lookup and validation functions accept either `source: catalog`, `source: server`
 or the existing `server: server` option. Do not supply both `:source` and `:server`.
@@ -223,8 +210,28 @@ end
 ```
 
 Both wrappers expose `list_all_keys/0`, `get/1,2`, `fetch/1,2`, `get!/1,2`,
-`validate_value/2,3` and `valid_value?/2,3`. Pass `source: catalog` to override a
+`label/2,3`, `validate_value/2,3` and `valid_value?/2,3`. Pass `source: catalog` to override a
 wrapper's server for a particular lookup or validation.
+
+## Displaying stored values
+
+`label/3` returns the label for a value you saved earlier, searching groups too:
+
+```elixir
+RefData.label("countries_grouped", "CA")
+# => "Canada"
+
+RefData.label("status", true)
+# => "Enabled"
+
+RefData.label("status", "unknown")
+# => nil
+```
+
+It returns `nil` for an unknown dataset or value. A value of the same type is
+preferred; otherwise a string matches a value's string representation, so `"true"`
+finds the label for `true`. If several labels share a value, the first is returned.
+Disabled options are not considered: a stored value keeps its label.
 
 ## Validating submitted values
 
@@ -278,7 +285,10 @@ end
 
 ## Migrating from 0.2
 
-- Upgrade Elixir to 1.20 or later. Jason is no longer a runtime dependency.
+- Upgrade Elixir to 1.18 or later. Jason is no longer a runtime dependency.
+- The default server no longer assumes a `ref_data/` directory. Set
+  `config :ref_data, path: "ref_data"` to keep the old location, or better, move the
+  files to `priv/ref_data` as shown above.
 - `use RefData` and successful flat lookups continue to work.
 - Grouped results now use string-labelled tuples: `{"Oceania", options}` rather
   than nested atom-keyed keyword lists. Update any code inspecting groups directly.
@@ -304,5 +314,5 @@ mix docs --warnings-as-errors
 mix hex.build
 ```
 
-CI checks Elixir 1.20.5 on OTP 27, 28 and 29.1.2. Test servers use isolated temporary
-fixtures or the example datasets and do not require the default application server.
+CI tests Elixir 1.18, 1.19 and 1.20 across OTP 27 to 29. Test servers use isolated
+temporary fixtures or the example datasets and do not require the default server.

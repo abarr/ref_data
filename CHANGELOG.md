@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-10
 
 ### Added
+- `RefData.label/3` returns the label for a stored value, for displaying saved choices.
 - Immutable catalogs loaded with `RefData.load/1` and selected with `source:`.
 - Submitted-value validation with canonical JSON values and explicit errors for
   unknown, disabled and ambiguous choices, including nested groups.
@@ -17,8 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests for malformed data, missing keys, empty datasets and grouped disabling.
 
 ### Changed
-- Prepare version 0.3.0, requiring Elixir 1.20 or later.
-- Pin development to Elixir 1.20.5 / OTP 29.1.2 and test supported OTP versions in CI.
+- Require Elixir 1.18 or later (for the built-in `JSON` module).
+- **Breaking:** the default server starts only when `config :ref_data, path: ...` is
+  set, so adding the dependency no longer fails startup when `ref_data/` is absent.
+- Pin development to Elixir 1.20.5 / OTP 29.1.2 and test Elixir 1.18 to 1.20 in CI.
 - Replace the Jason runtime dependency with built-in `JSON` decoding.
 - Update all development dependencies and the lockfile.
 - Represent grouped options as string-labelled tuples instead of atom-keyed lists.
@@ -33,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disabling options in grouped datasets.
 - Dynamic atom creation from JSON group labels.
 - Crashes on empty datasets and unclear errors for invalid input.
+
+## [0.2.1] - 2021-03-10
+
+### Changed
+- Documentation, package metadata and CI updates only; no library changes.
 
 ## [0.2.0] - 2021-03-10
 

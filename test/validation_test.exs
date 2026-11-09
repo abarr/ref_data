@@ -28,6 +28,22 @@ defmodule RefData.ValidationTest do
     %{sources: [server: server, source: catalog]}
   end
 
+  test "returns the label for a stored value", %{sources: sources} do
+    for source <- sources do
+      opts = [source]
+      assert RefData.label("countries", "AU", opts) == "Australia"
+      assert RefData.label("status", false, opts) == "Disabled"
+      assert RefData.label("counts", "1", opts) == "One"
+      assert RefData.label("ambiguous", "true", opts) == "String"
+      assert RefData.label("ambiguous", true, opts) == "Boolean"
+      assert RefData.label("duplicates", "A", opts) == "First"
+      assert RefData.label("countries", "Australia", opts) == nil
+      assert RefData.label("missing", "AU", opts) == nil
+      assert RefData.label("empty", nil, opts) == nil
+      assert_raise ArgumentError, fn -> RefData.label("status", true, opts ++ [disabled: []]) end
+    end
+  end
+
   test "validates submitted values rather than labels through nested groups", %{sources: sources} do
     for source <- sources do
       opts = [source]

@@ -43,8 +43,9 @@ defmodule RefData do
   @doc """
   Returns `{:ok, options}` or `:error` when the dataset does not exist.
 
-  Local server lookups read directly from ETS. An unavailable server exits with
-  `:noproc`, rather than being treated as a missing dataset. Remote servers use
+  Local server lookups read directly from ETS. An unavailable server (including the
+  default one when no `:path` is configured) exits with `:noproc`, rather than
+  being treated as a missing dataset. Remote servers use
   messages because ETS tables cannot be read across nodes.
   """
   @spec fetch(String.t(), lookup_options()) :: {:ok, options()} | :error
@@ -115,6 +116,26 @@ defmodule RefData do
     match?({:ok, _}, validate_value(key, submitted, opts))
   end
 
+  @doc """
+  Returns the label for a stored value, or `nil` if the dataset or value is unknown.
+
+  Use it to display a value saved from a form, for example `"CA"` as `"Canada"`.
+  Groups are searched too. A value of the same type is preferred; otherwise a
+  string matches a value's string representation, as in `validate_value/3`. If
+  several options share the value, the first label in the dataset is returned.
+  Accepts `:source` or `:server`.
+  """
+  @spec label(String.t(), term(), source: source(), server: GenServer.server()) ::
+          String.t() | nil
+  def label(key, value, opts \\ []) when is_binary(key) do
+    validate_options!(opts, [:server, :source])
+
+    case fetch_source(source(opts), key) do
+      {:ok, data} -> Options.label(data, value)
+      :error -> nil
+    end
+  end
+
   @doc false
   defdelegate disable_options(data, disabled), to: Options, as: :disable
 
@@ -122,9 +143,9 @@ defmodule RefData do
   defp fetch_source(%Catalog{} = catalog, key), do: Catalog.fetch(catalog, key)
   defp fetch_source(server, key), do: Store.fetch(server, key)
 
-  defp validate_options!(opts) do
+  defp validate_options!(opts, allowed \\ [:disabled, :server, :source]) do
     unless Keyword.keyword?(opts), do: raise(ArgumentError, "expected keyword options")
-    Keyword.validate!(opts, [:disabled, :server, :source])
+    Keyword.validate!(opts, allowed)
 
     if Keyword.has_key?(opts, :source) and Keyword.has_key?(opts, :server) do
       raise ArgumentError, "use either :source or :server, not both"
@@ -152,6 +173,9 @@ defmodule RefData do
 
       def valid_value?(key, submitted, opts \\ []),
         do: RefData.valid_value?(key, submitted, ref_data_options(opts))
+
+      def label(key, value, opts \\ []),
+        do: RefData.label(key, value, ref_data_options(opts))
 
       defp ref_data_options(opts) do
         if Keyword.has_key?(opts, :source),

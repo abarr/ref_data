@@ -5,7 +5,7 @@ defmodule RefData.MixProject do
     [
       app: :ref_data,
       version: "0.3.0",
-      elixir: "~> 1.20",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       description: description(),
       package: package(),
@@ -43,8 +43,8 @@ defmodule RefData.MixProject do
   end
 
   defp description() do
-    "RefData is a library for Phoenix projects that lets you provide reference data
-    for your forms (e.g. Gender) without using a database table. "
+    "Reference data for Phoenix forms (e.g. countries, statuses) loaded from JSON files " <>
+      "instead of database tables, with select options, labels and submitted-value validation."
   end
 
   defp package() do

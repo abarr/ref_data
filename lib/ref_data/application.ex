@@ -4,11 +4,12 @@ defmodule RefData.Application do
 
   @impl true
   def start(_type, _args) do
+    # Only start the default server when a path is configured, so that merely
+    # depending on RefData never stops a host application from booting.
     children =
-      if Application.get_env(:ref_data, :start_default_server, true) do
-        [{RefData.Server, path: Application.get_env(:ref_data, :path, "ref_data")}]
-      else
-        []
+      case Application.fetch_env(:ref_data, :path) do
+        {:ok, path} -> [{RefData.Server, path: path}]
+        :error -> []
       end
 
     children = [{Registry, keys: :unique, name: RefData.Registry} | children]

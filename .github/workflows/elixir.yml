@@ -11,9 +11,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        otp: ['27', '28', '29.1.2']
-        elixir: ['1.20.5']
+        include:
+          - {elixir: '1.18.4', otp: '27'}
+          - {elixir: '1.19.5', otp: '28'}
+          - {elixir: '1.20.5', otp: '27'}
+          - {elixir: '1.20.5', otp: '28'}
+          - {elixir: '1.20.5', otp: '29.1.2', lint: true}
     env:
       MIX_ENV: test
     steps:
@@ -29,10 +34,16 @@ jobs:
             _build
           key: ${{ runner.os }}-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
       - run: mix deps.get
-      - run: mix format --check-formatted
       - run: mix compile --warnings-as-errors
       - run: mix test --warnings-as-errors
-      - run: mix credo --strict
-      - run: mix hex.audit
-      - run: mix hex.build
-      - run: MIX_ENV=dev mix docs --warnings-as-errors
+      # Formatting, linting and packaging are checked once, on the pinned toolchain.
+      - if: matrix.lint
+        run: mix format --check-formatted
+      - if: matrix.lint
+        run: mix credo --strict
+      - if: matrix.lint
+        run: mix hex.audit
+      - if: matrix.lint
+        run: mix hex.build
+      - if: matrix.lint
+        run: MIX_ENV=dev mix docs --warnings-as-errors

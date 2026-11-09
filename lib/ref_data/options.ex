@@ -22,6 +22,17 @@ defmodule RefData.Options do
     end
   end
 
+  # An exact match wins; otherwise a string may match a value's string form.
+  def label(data, value) do
+    options = flatten(data)
+
+    option =
+      Enum.find(options, &(&1[:value] === value)) ||
+        Enum.find(options, &matches?(&1[:value], value))
+
+    if option, do: option[:key]
+  end
+
   defp matches?(value, submitted) when is_binary(submitted),
     do: to_string(value) == submitted
 
