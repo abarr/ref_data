@@ -2,25 +2,37 @@ name: Elixir CI
 
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-
-    name: Build and test
+  test:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        otp: ['27', '28', '29.1.2']
+        elixir: ['1.20.5']
+    env:
+      MIX_ENV: test
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Elixir
-      uses: Adzz/elixir_run_tests_action@v2.0.0
-      
-    - name: Restore dependencies cache
-      uses: actions/cache@v2
-      with:
-        path: deps
-        key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-        restore-keys: ${{ runner.os }}-mix-
-    
+      - uses: actions/checkout@v7.0.1
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
+      - run: mix deps.get
+      - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
+      - run: mix test --warnings-as-errors
+      - run: mix credo --strict
+      - run: mix hex.audit
+      - run: mix hex.build
+      - run: MIX_ENV=dev mix docs --warnings-as-errors

@@ -1,79 +1,108 @@
 defmodule RefData do
   @moduledoc """
-  RefData is a library for Phoenix projects that lets you provide reference data
-  for your forms (e.g. Gender) without using a database table. It has been written
-  as tool for POC development but can be used in PROD for fields that are common
-  and do not form part of complex queries.
+  Loads JSON reference datasets into memory for form options and other lookups.
+
+  Call this module directly or use `use RefData` to define a compatible wrapper.
+  See the README for data formats, configuration and supervision examples.
   """
 
-  defmacro __using__(_opts) do
-    quote do
-      def list_all_keys() do
-        GenServer.call(RefData.Server, {:get_all_keys})
-      end
+  @type option :: [key: String.t(), value: String.t() | number() | boolean(), disabled: boolean()]
+  @type group :: {String.t(), [option() | group()]}
+  @type options :: [option() | group()]
+  @type lookup_options :: [disabled: [String.t()], server: GenServer.server()]
 
-      def get(key) do
-        GenServer.call(RefData.Server, {key})
-      end
+  @doc "Starts a reference data server. Requires `:path`; accepts `:name` to override the default server name."
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts), do: RefData.Server.start_link(opts)
 
-      def get(key, disabled: list) do
-        GenServer.call(RefData.Server, {key, disabled: list})
-      end
+  @doc false
+  def child_spec(opts) do
+    %{id: Keyword.get(opts, :name) || __MODULE__, start: {__MODULE__, :start_link, [opts]}}
+  end
+
+  @doc "Returns the dataset names in alphabetical order."
+  @spec list_all_keys(GenServer.server()) :: [String.t()]
+  def list_all_keys(server \\ RefData.Server), do: GenServer.call(server, {:get_all_keys})
+
+  @doc "Returns `{:ok, options}` or `:error` when the dataset does not exist."
+  @spec fetch(String.t(), lookup_options()) :: {:ok, options()} | :error
+  def fetch(key, opts \\ []) when is_binary(key) do
+    validate_options!(opts)
+
+    case GenServer.call(Keyword.get(opts, :server, RefData.Server), {:fetch, key}) do
+      {:ok, data} -> {:ok, disable_options(data, Keyword.get(opts, :disabled, []))}
+      :error -> :error
     end
   end
 
   @doc """
-  Returns a list of all key values from the underlying data store.
-  It will match the keys used in the individual json files
+  Returns the dataset options, or `nil` if the dataset does not exist.
 
-  ## Examples
-
-      iex> RefData.list_all_keys()
-      ["key1", "key2"]
-
+  `:disabled` lists option labels (the `key` fields), including labels in groups.
+  `:server` selects a named server or PID. Neither option changes the stored data.
   """
-  @callback list_all_keys() :: List
+  @spec get(String.t(), lookup_options()) :: options() | nil
+  def get(key, opts \\ []) do
+    case fetch(key, opts) do
+      {:ok, data} -> data
+      :error -> nil
+    end
+  end
 
-  @doc """
-  Returns a list of data for the provided key. If the json defines
-  grouped data it will return grouped data.
+  @doc "Returns dataset options, raising `KeyError` if the dataset does not exist."
+  @spec get!(String.t(), lookup_options()) :: options()
+  def get!(key, opts \\ []) do
+    case fetch(key, opts) do
+      {:ok, data} -> data
+      :error -> raise KeyError, key: key, term: __MODULE__
+    end
+  end
 
-  ## Examples
+  @doc false
+  def disable_options(data, []), do: data
 
-      iex(1)> MyRefData.get("gender")
-      [
-        [key: "Male", value: "Male"],
-        [key: "Female", value: "Female"],
-        [key: "Non-binary", value: "non-binary"]
-      ]
+  def disable_options(data, disabled) do
+    disabled = MapSet.new(disabled)
+    disable(data, disabled)
+  end
 
-      iex(1)> MyRefData.get("countries")
-      [
-        Asia: [
-          [key: "Australia", value: "Australia"],
-          [key: "New Zealand", value: "New Zealand"]
-        ],
-        Americas: [
-          [key: "Canada", value: "Canada"],
-          [key: "USA", value: "USA"]]
-      ]
+  defp disable(data, disabled) do
+    Enum.map(data, fn
+      {label, values} ->
+        {label, disable(values, disabled)}
 
-  """
-  @callback get(key :: String) :: List
+      [key: key, value: value] = option ->
+        if MapSet.member?(disabled, key),
+          do: option ++ [disabled: true],
+          else: [key: key, value: value]
+    end)
+  end
 
-  @doc """
-  You can pass params to the get function. Keywords available
-  - disabled: [] - Will return the data with the listed fields disabled
+  defp validate_options!(opts) do
+    unless Keyword.keyword?(opts), do: raise(ArgumentError, "expected keyword options")
+    Keyword.validate!(opts, [:disabled, :server])
+    disabled = Keyword.get(opts, :disabled, [])
 
-  ## Example
+    unless is_list(disabled) and Enum.all?(disabled, &is_binary/1) do
+      raise ArgumentError, ":disabled must be a list of option labels"
+    end
+  end
 
-    iex(1)> MyRefData.get("gender", disabled: ["Female"])
-    [
-      [key: "Male", value: "Male"],
-      [key: "Female", value: "Female", disabled: true],
-      [key: "Non-binary", value: "Non-binary"]
-    ]
+  @doc "Defines lookup functions delegating to RefData. Accepts a `:server` option."
+  defmacro __using__(opts) do
+    server = Keyword.get(opts, :server, RefData.Server)
 
-  """
-  @callback get(key :: String, {:disabled, []}) :: List
+    quote do
+      def list_all_keys, do: RefData.list_all_keys(unquote(server))
+
+      def get(key, opts \\ []),
+        do: RefData.get(key, Keyword.put_new(opts, :server, unquote(server)))
+
+      def get!(key, opts \\ []),
+        do: RefData.get!(key, Keyword.put_new(opts, :server, unquote(server)))
+
+      def fetch(key, opts \\ []),
+        do: RefData.fetch(key, Keyword.put_new(opts, :server, unquote(server)))
+    end
+  end
 end

@@ -22,3 +22,7 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 ref_data-*.tar
 
+
+# Temporary directories created by ExUnit.
+/tmp/
+.DS_Store

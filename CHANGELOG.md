@@ -6,7 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing at this time
+### Added
+- Direct lookup API with `fetch/2`, `get!/2` and configurable server selection.
+- Explicit supervision and independent named or unnamed instances.
+- File-specific validation errors and duplicate dataset detection.
+- Tests for malformed data, missing keys, empty datasets and grouped disabling.
+
+### Changed
+- Prepare version 0.3.0, requiring Elixir 1.20 or later.
+- Pin development to Elixir 1.20.5 / OTP 29.1.2 and test supported OTP versions in CI.
+- Replace the Jason runtime dependency with built-in `JSON` decoding.
+- Update all development dependencies and the lockfile.
+- Represent grouped options as string-labelled tuples instead of atom-keyed lists.
+- Return `nil` for missing `get` lookups without crashing the shared server.
+- Store datasets in a map and preserve option order.
+- Document release-safe paths, current configuration syntax and migration steps.
+
+### Fixed
+- Disabling options in grouped datasets.
+- Dynamic atom creation from JSON group labels.
+- Crashes on empty datasets and unclear errors for invalid input.
 
 ## [0.2.0] - 2021-03-10
 

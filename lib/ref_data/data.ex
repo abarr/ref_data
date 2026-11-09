@@ -1,84 +1,98 @@
 defmodule RefData.Data do
   @moduledoc false
 
-  # Take a directory path and standardise a list of file paths
-  # for json file types
-  def get_file_paths(dir) do
-    list =
-      "#{dir}/*.json"
-      |> Path.wildcard()
-      |> Enum.sort()
-
-    if is_list(list) do
-      {:ok, list}
-    else
-      {:error, "Unable to get list of file paths"}
+  @spec load(Path.t()) :: {:ok, map()} | {:error, String.t()}
+  def load(dir) do
+    with {:ok, paths} <- get_file_paths(dir) do
+      load_ref_data(paths)
     end
   end
 
-  # Takes a list of file paths and standardises a list of maps
-  # Each map represents a set of defined reference data
-  def load_ref_data([]), do: {:error, "Cannot load json files, must be a list of strings"}
+  def get_file_paths(dir) when is_binary(dir) do
+    case File.ls(dir) do
+      {:ok, files} ->
+        paths =
+          files
+          |> Enum.filter(&(Path.extname(&1) == ".json"))
+          |> Enum.sort()
+          |> Enum.map(&Path.join(dir, &1))
+
+        {:ok, paths}
+
+      {:error, reason} ->
+        {:error, "#{dir}: #{:file.format_error(reason)}"}
+    end
+  end
+
+  def get_file_paths(_), do: {:error, "expected a directory path"}
 
   def load_ref_data(paths) when is_list(paths) do
-    paths
-    |> Enum.map(fn path ->
-      path
-      |> read_file()
-      |> Jason.decode!(strings: :copy)
+    Enum.reduce_while(paths, {:ok, %{}}, fn path, {:ok, datasets} ->
+      with {:ok, contents} <- File.read(path),
+           {:ok, decoded} <- JSON.decode(contents),
+           {:ok, name, data} <- standardise(decoded),
+           false <- Map.has_key?(datasets, name) do
+        {:cont, {:ok, Map.put(datasets, name, data)}}
+      else
+        true -> {:halt, {:error, "#{path}: duplicate dataset name"}}
+        {:error, reason} -> {:halt, {:error, "#{path}: #{inspect(reason)}"}}
+      end
     end)
-    |> standardise([], :valid)
   end
 
-  def load_ref_data(_), do: {:error, "Must provide a list of paths to load reference data"}
+  def load_ref_data(_), do: {:error, "expected a list of file paths"}
 
-  defp standardise(_, _, :invalid), do: {:error, "Unable to parse json files"}
-
-  defp standardise([], standardised_list, :valid), do: {:ok, standardised_list}
-
-  defp standardise([map | rest], standardised_list, :valid) do
-    map = standardise(map)
-    standardise(rest, [map | standardised_list], :valid)
-  end
-
-  # Capture key and data values when defined in JSON
-  defp standardise(%{"name" => name, "data" => data}), do: standardise(name, data)
-
-  # Capture key and data values when JSON is simple definition
-  defp standardise(%{} = map) do
-    [name] = Map.keys(map)
-    data = Map.get(map, name)
+  defp standardise(%{"name" => name, "data" => data}) when is_binary(name) do
     standardise(name, data)
   end
 
-  # Creates a standard list of maps for GenServer State
+  defp standardise(map) when is_map(map) and map_size(map) == 1 do
+    [{name, data}] = Map.to_list(map)
+    standardise(name, data)
+  end
+
+  defp standardise(_), do: {:error, "expected a named dataset or a single-key object"}
+
   defp standardise(name, data) when is_binary(name) and is_list(data) do
-    data = standardise_values(data)
-    %{name: name, data: data}
+    with {:ok, options} <- standardise_values(data) do
+      {:ok, name, options}
+    end
   end
 
-  # Standardise when JSON definition includes keys
-  defp standardise_values([%{"key" => _key, "value" => _value} | _t] = values) do
-    Enum.into(values, [], fn %{"key" => key, "value" => value} -> [key: key, value: value] end)
-  end
+  defp standardise(_, _), do: {:error, "dataset name must be a string and data must be a list"}
 
-  # Standardise when JSON definition is simple list and value is both key and value
-  defp standardise_values([h | _t] = values) when is_binary(h) do
-    Enum.into(values, [], fn v -> {v, v} end)
-    |> Enum.into([], fn {k, v} -> [key: k, value: v] end)
-  end
-
-  # Standardise when JSON definition is a grouped data
-  defp standardise_values([h | _t] = values) when is_map(h) do
-    Enum.into(values, [], fn map ->
-      [key] = Map.keys(map)
-      data = Map.fetch!(map, key)
-      standardised_data = standardise_values(data)
-      ["#{key}": standardised_data]
+  defp standardise_values(values) do
+    Enum.reduce_while(values, {:ok, []}, fn value, {:ok, options} ->
+      case standardise_value(value) do
+        {:ok, option} -> {:cont, {:ok, [option | options]}}
+        {:error, _} = error -> {:halt, error}
+      end
     end)
+    |> case do
+      {:ok, options} -> {:ok, Enum.reverse(options)}
+      error -> error
+    end
   end
 
-  defp read_file(path) when is_binary(path), do: File.read!(path)
+  defp standardise_value(value) when is_binary(value), do: {:ok, [key: value, value: value]}
 
-  defp read_file(_), do: {:error, "Cannot load json files, path is not a valid binary"}
+  defp standardise_value(%{"key" => key, "value" => value})
+       when is_binary(key) and (is_binary(value) or is_number(value) or is_boolean(value)) do
+    {:ok, [key: key, value: value]}
+  end
+
+  defp standardise_value(map) when is_map(map) and map_size(map) == 1 do
+    [{label, values}] = Map.to_list(map)
+
+    if is_binary(label) and is_list(values) do
+      with {:ok, options} <- standardise_values(values) do
+        {:ok, {label, options}}
+      end
+    else
+      {:error, "group must contain a string label and a list of options"}
+    end
+  end
+
+  defp standardise_value(_),
+    do: {:error, "invalid option: expected a string, key/value object or group"}
 end
