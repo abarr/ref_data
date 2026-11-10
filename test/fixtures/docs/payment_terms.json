@@ -1,0 +1,7 @@
+{
+  "payment_terms": [
+    {"key": "Net 7", "value": 7},
+    {"key": "Net 30", "value": 30},
+    {"key": "Net 60", "value": 60}
+  ]
+}

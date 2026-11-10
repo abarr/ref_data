@@ -1,0 +1,11 @@
+{
+  "countries_by_region": [
+    {"Oceania": [
+      {"key": "Australia", "value": "AU"},
+      {"key": "New Zealand", "value": "NZ"}
+    ]},
+    {"Americas": [
+      {"key": "Canada", "value": "CA"}
+    ]}
+  ]
+}

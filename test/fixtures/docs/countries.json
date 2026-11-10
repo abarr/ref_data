@@ -1,1 +1,8 @@
-{"countries": ["Australia", "New Zealand", "Canada"]}
+{
+  "name": "countries",
+  "data": [
+    {"key": "Australia", "value": "AU"},
+    {"key": "Canada", "value": "CA"},
+    {"key": "New Zealand", "value": "NZ"}
+  ]
+}

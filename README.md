@@ -2,18 +2,19 @@
 
 [![Elixir CI](https://github.com/abarr/ref_data/actions/workflows/elixir.yml/badge.svg)](https://github.com/abarr/ref_data/actions/workflows/elixir.yml)
 
-RefData loads JSON reference datasets into memory for form options and other lookups,
-without a database. It uses Elixir's built-in `JSON` module and has no runtime dependencies.
-Once a path is configured, RefData loads datasets into shared ETS storage at application
-startup. Lookups read directly from ETS, and the same datasets validate submitted form
-values and supply labels for stored values.
-Standalone immutable catalogs are also available when you want to load and pass data
-explicitly.
+Most applications have short lists that rarely change: countries, titles, payment
+terms, subscription plans. RefData keeps those lists in JSON files in your project
+instead of database tables, and gives you three things for each one:
 
-## Requirements and installation
+- **options** for a select input,
+- **validation** of the value a form submits, and
+- the **label** for a value you stored earlier.
 
-Elixir 1.18 or later and a compatible Erlang/OTP version are required. Development is
-pinned to Elixir 1.20.5 and OTP 29.1.2 in `.tool-versions`.
+It has no runtime dependencies.
+
+## Installation
+
+Add RefData to your dependencies. It requires Elixir 1.18 or later.
 
 ```elixir
 def deps do
@@ -23,11 +24,12 @@ end
 
 ## Quick start with Phoenix
 
-This walks one field, a user's country, through a form: rendering the choices,
+This walks one field, a customer's country, through a form: rendering the choices,
 validating the submission, and displaying the stored value.
 
-**1. Create a dataset.** `mix ref_data.init` creates `priv/ref_data/`. Add
-`priv/ref_data/countries.json`, giving each option a label (`key`) and the value to store:
+**1. Create a dataset.** Run `mix ref_data.init` to create `priv/ref_data/`, then add
+`priv/ref_data/countries.json`. Each option has a label to show (`key`) and a value
+to store (`value`):
 
 ```json
 {
@@ -57,8 +59,8 @@ select inputs accept:
 list. In an Ecto changeset:
 
 ```elixir
-def changeset(user, attrs) do
-  user
+def changeset(customer, attrs) do
+  customer
   |> cast(attrs, [:country])
   |> validate_change(:country, fn :country, value ->
     if RefData.valid_value?("countries", value), do: [], else: [country: "is not a valid choice"]
@@ -69,284 +71,351 @@ end
 **5. Display the stored value.** The database holds `"CA"`; show the label:
 
 ```heex
-<p>Country: {RefData.label("countries", @user.country)}</p>
+<p>Country: {RefData.label("countries", @customer.country)}</p>
 ```
 
-The rest of this document covers each part in detail.
+That is the whole workflow. The rest of this document covers each part in detail.
 
-## Choosing how to store data
+## Writing datasets
 
-**Use shared ETS storage for a Phoenix app or any application where several parts
-need the same datasets.** Controllers, LiveViews and background jobs can look up
-options by name without receiving a catalog as an argument. This is the default:
-`RefData.get("countries")` and `RefData.validate_value("countries", value)` use ETS.
+Each `.json` file in the directory defines one dataset. RefData loads them when your
+application starts; restart the application to pick up changed files.
 
-**Use a standalone catalog for a script, an isolated job, a test, or a function that
-should receive its reference data explicitly.** Load a snapshot and pass it to the
-functions that need it using `source: catalog`.
+Two words are used throughout:
 
-| | Shared ETS storage (default) | Standalone catalog |
-| --- | --- | --- |
-| Best fit | Reference data used throughout an application | Self-contained tasks and explicit data passing |
-| Where data lives | An ETS table shared by callers on one node | An immutable Elixir map held by the caller |
-| Loading | Automatically at startup, or through an explicitly supervised instance | When you call `RefData.load/1` |
-| Reading | Direct ETS reads, without lookup messages to the owner | Ordinary function calls using the supplied catalog |
-| Lifecycle | A supervised GenServer owns the table and reloads it after a crash | The caller holds the snapshot; no dataset server is required |
-| Loading changed files | Restart the storage instance | Load a new catalog |
+- A **dataset name** identifies a list, such as `"countries"`. It is the first
+  argument to every function. (`list_all_keys/0` returns dataset names.)
+- An option's **label** is the text a person sees. In JSON and in returned options it
+  is the `key` field, next to the `value` that gets submitted and stored.
 
-Both options parse JSON when loading and keep the data in memory for subsequent
-lookups. Both use the same data formats, grouping, disabled-option handling and
-submitted-value validation. Choose based on how you want to share and manage the
-data; a standalone catalog does not replace the shared default implicitly.
+The examples in this document use the five files below.
 
-## Shared ETS storage (default)
-
-Tell RefData where your datasets are and it starts a supervised owner that loads the
-`*.json` files in that directory into ETS. Put them in your application's
-`priv/ref_data/` directory so Mix bundles them into releases. To create the directory
-with an example dataset, run:
-
-```sh
-mix ref_data.init
-```
-
-Then resolve the path at runtime in `config/runtime.exs`:
-
-```elixir
-import Config
-
-config :ref_data,
-  path: Application.app_dir(:my_app, "priv/ref_data")
-```
-
-The GenServer manages loading and table ownership; local reads bypass its mailbox.
-You do not need to call `RefData.load/1` or pass a `:source` option for this workflow.
-
-An empty directory is valid; a missing directory or invalid file stops startup with
-an error identifying the path. Without a configured `:path` no default server is
-started, and lookups that do not name a `:source` or `:server` exit with `:noproc`.
-
-Datasets are trusted input: files are read whole, with no size limits. Point RefData
-only at directories your application controls, never at user-uploaded files.
-
-### Supervising it yourself
-
-Alternatively, leave `:path` unset and add an instance to your application's
-supervision tree:
-
-```elixir
-children = [
-  {RefData, name: MyApp.ReferenceData, path: Application.app_dir(:my_app, "priv/ref_data")}
-]
-```
-
-Query it with `RefData.get("countries", server: MyApp.ReferenceData)`. Instances have
-independent data. Use different names for multiple instances, or `name: nil` for an
-unnamed process and query it by PID. Data is loaded at startup; restart an instance
-to load changed files. Local lookups read directly from a protected ETS table;
-they do not send requests to the storage server. The server owns the table and
-loads its contents before publishing it to readers. Stopping the server deletes
-the table. Reads by name resolve the current instance after a restart. Reads during
-shutdown or startup can exit with `:noproc`; this is distinct from a missing dataset.
-Remote server lookups retain message-based access because ETS is local to a node.
-
-## Standalone catalogs (opt-in)
-
-Choose this option when you want to hold a snapshot explicitly, such as inside a
-script or an isolated job. No configuration is needed. Load a directory once and
-pass the returned immutable snapshot to ordinary functions:
-
-```elixir
-{:ok, catalog} = RefData.load("priv/ref_data")
-
-RefData.list_all_keys(catalog)
-RefData.get("countries", source: catalog)
-RefData.validate_value("countries", "Australia", source: catalog)
-```
-
-Loading and querying a catalog does not require a server, a Registry or an ETS table.
-A catalog keeps its original data even if the files change; call `RefData.load/1`
-again to obtain a new snapshot. Calling `RefData.load/1` does not populate or switch
-the shared ETS storage: pass `source: catalog` for each catalog lookup or validation.
-You can also use catalogs alongside the shared ETS storage.
-
-Lookup and validation functions accept either `source: catalog`, `source: server`
-or the existing `server: server` option. Do not supply both `:source` and `:server`.
-`RefData.load/1` returns `{:error, reason}` for invalid files, just like server startup.
-
-## Data formats
-
-Each file defines one dataset. Names must be unique across the directory. Files are
-loaded alphabetically; option order within each dataset is preserved.
-
-A simple dataset:
+**A plain list**, when the label and the stored value are the same. `titles.json`:
 
 ```json
-{"countries": ["Australia", "New Zealand", "Canada"]}
+{"titles": ["Dr", "Mr", "Mrs", "Ms", "Mx"]}
 ```
 
-An explicit dataset with separate labels (`key`) and submitted values (`value`):
+**Labels with separate values**, when you store a code. `plans.json`:
 
 ```json
 {
-  "name": "status",
-  "data": [
-    {"key": "Enabled", "value": true},
-    {"key": "Disabled", "value": false}
+  "plans": [
+    {"key": "Starter", "value": "starter"},
+    {"key": "Pro", "value": "pro"},
+    {"key": "Legacy", "value": "legacy"}
   ]
 }
 ```
 
-Labels must be strings. Explicit values may be strings, numbers or booleans and
-retain their JSON types: `"true"` remains a string, while `true` is a boolean.
-Empty datasets and empty groups are supported.
-
-Groups use a string label and a list of options. Groups may contain either simple
-strings or explicit key/value entries, and may be nested:
+**Numbers and booleans** keep their JSON types, so you store `30`, not `"30"`.
+`payment_terms.json`:
 
 ```json
 {
-  "countries_grouped": [
-    {"Oceania": ["Australia", "New Zealand"]},
-    {"Americas": [{"key": "Canada", "value": "CA"}]}
+  "payment_terms": [
+    {"key": "Net 7", "value": 7},
+    {"key": "Net 30", "value": 30},
+    {"key": "Net 60", "value": 60}
   ]
 }
 ```
 
-Group labels remain strings; no atoms are created from JSON labels.
+**Groups**, which render as `<optgroup>` elements. `countries_by_region.json`:
 
-## Lookups
+```json
+{
+  "countries_by_region": [
+    {"Oceania": [
+      {"key": "Australia", "value": "AU"},
+      {"key": "New Zealand", "value": "NZ"}
+    ]},
+    {"Americas": [
+      {"key": "Canada", "value": "CA"}
+    ]}
+  ]
+}
+```
 
-The examples below use the three datasets shown under [Data formats](#data-formats),
-loaded into the default shared ETS storage. Every `iex>` example in this document
-and in the function documentation runs as part of the test suite.
+The fifth file is `countries.json` from the quick start. It uses the alternative
+`{"name": ..., "data": [...]}` layout, which means the same as the single-key form.
+
+The rules:
+
+- Dataset names must be unique across the directory.
+- Labels must be strings. Values may be strings, numbers or booleans.
+- Option order is preserved.
+- A group may hold plain strings or labelled options, and groups may be nested.
+- Empty datasets and empty groups are allowed.
+- An invalid file stops loading with an error that names the file.
+
+## Everyday use
+
+Every `iex>` example below, and in the function documentation, runs as part of the
+test suite against the five files above.
+
+### Select options
+
+`get/2` returns a dataset ready for a select input:
 
 ```elixir
-iex> RefData.list_all_keys()
-["countries", "countries_grouped", "status"]
-
-iex> RefData.get("countries")
+iex> RefData.get("titles")
 [
-  [key: "Australia", value: "Australia"],
-  [key: "New Zealand", value: "New Zealand"],
-  [key: "Canada", value: "Canada"]
+  [key: "Dr", value: "Dr"],
+  [key: "Mr", value: "Mr"],
+  [key: "Mrs", value: "Mrs"],
+  [key: "Ms", value: "Ms"],
+  [key: "Mx", value: "Mx"]
 ]
+```
 
-iex> RefData.get("countries_grouped")
+Groups come back as `{label, options}` tuples:
+
+```elixir
+iex> RefData.get("countries_by_region")
 [
-  {"Oceania", [[key: "Australia", value: "Australia"], [key: "New Zealand", value: "New Zealand"]]},
+  {"Oceania", [[key: "Australia", value: "AU"], [key: "New Zealand", value: "NZ"]]},
   {"Americas", [[key: "Canada", value: "CA"]]}
 ]
+```
+
+Both shapes can be given to a Phoenix `<.input type="select">` or to
+`Phoenix.HTML.Form.options_for_select/2`.
+
+A dataset that does not exist is handled three ways, depending on what suits the caller:
+
+```elixir
+iex> RefData.get("missing")
+nil
 
 iex> RefData.fetch("missing")
 :error
 
-iex> RefData.get("missing")
-nil
+iex> RefData.list_all_keys()
+["countries", "countries_by_region", "payment_terms", "plans", "titles"]
 ```
 
-`RefData.get!("missing")` raises `KeyError` in the caller; the server continues running.
+`RefData.get!("missing")` raises `KeyError`. Use it in templates, where a misspelt
+dataset name is a bug you want to hear about.
 
-Disable options by **label**, including labels inside groups:
+### Retiring an option
+
+Suppose the Legacy plan is no longer sold, but existing customers are still on it.
+Pass its label in `:disabled` to grey it out in the form:
 
 ```elixir
-iex> RefData.get("countries", disabled: ["Canada"])
+iex> RefData.get("plans", disabled: ["Legacy"])
 [
-  [key: "Australia", value: "Australia"],
-  [key: "New Zealand", value: "New Zealand"],
-  [key: "Canada", value: "Canada", disabled: true]
+  [key: "Starter", value: "starter"],
+  [key: "Pro", value: "pro"],
+  [key: "Legacy", value: "legacy", disabled: true]
 ]
 ```
 
-These results can be passed to `Phoenix.HTML.Form.options_for_select/2`.
-Disabling options only changes the returned result, not the stored dataset.
-
-Existing wrapper modules remain supported:
+A browser will not submit a disabled option, but a crafted request can. Pass the
+same list when validating so it is rejected:
 
 ```elixir
-defmodule MyApp.MyRefData do
-  use RefData
-end
+iex> RefData.validate_value("plans", "legacy", disabled: ["Legacy"])
+{:error, :disabled_value}
+```
 
-# Or configure a supervised instance:
-defmodule MyApp.CustomRefData do
-  use RefData, server: MyApp.ReferenceData
+Existing customers still see the right name, because labels ignore `:disabled`:
+
+```elixir
+iex> RefData.label("plans", "legacy")
+"Legacy"
+```
+
+`:disabled` applies only to the call it is passed to. It does not change the stored
+dataset, so you can decide per form or per user what to disable.
+
+### Validating submissions
+
+`validate_value/3` checks a submitted value against a dataset's **values** and
+returns the value to store. Browsers submit everything as strings, so a string is
+matched against each value's text form and the stored type comes back:
+
+```elixir
+iex> RefData.validate_value("payment_terms", "30")
+{:ok, 30}
+
+iex> RefData.validate_value("payment_terms", "45")
+{:error, :invalid_value}
+```
+
+Labels are not accepted, and values inside groups are found:
+
+```elixir
+iex> RefData.validate_value("payment_terms", "Net 30")
+{:error, :invalid_value}
+
+iex> RefData.validate_value("countries_by_region", "NZ")
+{:ok, "NZ"}
+```
+
+In a controller or LiveView, use the returned value rather than the raw parameter:
+
+```elixir
+case RefData.validate_value("payment_terms", params["payment_terms"]) do
+  {:ok, days} -> Invoices.create(customer, due_in_days: days)
+  {:error, _reason} -> {:error, "Choose a payment term from the list"}
 end
 ```
 
-Both wrappers expose `list_all_keys/0`, `get/1,2`, `fetch/1,2`, `get!/1,2`,
-`label/2,3`, `validate_value/2,3` and `valid_value?/2,3`. Pass `source: catalog` to override a
-wrapper's server for a particular lookup or validation.
-
-## Displaying stored values
-
-`label/3` returns the label for a value you saved earlier, searching groups too:
+When you only need yes or no, as in the changeset in the quick start, use
+`valid_value?/3`. For a multi-select field, check each submitted value:
 
 ```elixir
-iex> RefData.label("countries_grouped", "CA")
+iex> submitted = ["AU", "NZ", "XX"]
+iex> Enum.reject(submitted, &RefData.valid_value?("countries", &1))
+["XX"]
+```
+
+The possible errors are:
+
+| Error | Meaning |
+| --- | --- |
+| `:unknown_dataset` | No dataset has that name. |
+| `:invalid_value` | No option has that value. |
+| `:disabled_value` | Every option with that value is in `:disabled`. |
+| `:ambiguous_value` | A string matches two different values, such as `30` and `"30"` in one dataset. Avoid mixing them. |
+
+Matching is exact. `"30"` matches the number `30`, but `"030"`, `"30.0"` and `" 30"`
+do not. A number or boolean passed from Elixir must match the stored type, and `nil`,
+lists and maps are never valid. If two labels share a value, the value is valid while
+either label is enabled.
+
+### Displaying stored values
+
+`label/3` turns a stored value back into its label, searching inside groups too:
+
+```elixir
+iex> RefData.label("countries_by_region", "CA")
 "Canada"
 
-iex> RefData.label("status", true)
-"Enabled"
+iex> RefData.label("payment_terms", 30)
+"Net 30"
 
-iex> RefData.label("status", "unknown")
+iex> RefData.label("payment_terms", "30")
+"Net 30"
+
+iex> RefData.label("plans", "discontinued")
 nil
 ```
 
-It returns `nil` for an unknown dataset or value. A value of the same type is
-preferred; otherwise a string matches a value's string representation, so `"true"`
-finds the label for `true`. If several labels share a value, the first is returned.
-Disabled options are not considered: a stored value keeps its label.
+It returns `nil` for an unknown dataset or value, so a template can supply a fallback:
+`RefData.label("plans", @customer.plan) || "Unknown plan"`. If several labels share a
+value, the first one is returned.
 
-## Validating submitted values
+### A module for your application
 
-`validate_value/3` checks a single submitted value against the dataset's **values**,
-including options nested inside groups. It returns the canonical value for an
-allowed choice. Labels are not accepted unless they are also a stored value.
-
-For the `status` dataset above:
+`use RefData` defines the same functions on a module of your own. It gives the rest
+of your code one place to call, and one place to change if you later move the data
+to a server you supervise yourself:
 
 ```elixir
-iex> RefData.validate_value("status", "true")
-{:ok, true}
+defmodule MyApp.RefData do
+  use RefData
+end
 
-iex> RefData.validate_value("status", "false")
-{:ok, false}
-
-iex> RefData.validate_value("status", "Enabled")
-{:error, :invalid_value}
-
-iex> RefData.validate_value("status", "true", disabled: ["Enabled"])
-{:error, :disabled_value}
-
-iex> RefData.valid_value?("status", "false")
-true
+MyApp.RefData.get("titles")
+MyApp.RefData.valid_value?("countries", "CA")
+MyApp.RefData.label("countries", "CA")
 ```
 
-Browser form fields arrive as strings. A string must exactly equal the string
-representation of a known value: `"1"` can match the integer `1`, but `"01"`,
-`"1.0"` and `" 1"` do not. Numeric and boolean inputs must match their stored types
-exactly. Nulls, lists and maps are invalid single values. Validate each choice
-separately for a multi-select field.
+## Advanced
 
-Pass the same disabled labels when rendering options and validating submissions.
-Rendering with `disabled:` does not change the shared data or establish a permanent
-validation rule. If several labels share a value, it remains valid when at least
-one matching label is enabled.
+Most applications need nothing in this section.
 
-A string that matches distinct enabled values, such as JSON `true` and `"true"`,
-returns `{:error, :ambiguous_value}`. Choose unambiguous codes for form fields.
-An unknown dataset returns `{:error, :unknown_dataset}`. `valid_value?/3` returns
-`false` for any validation error, while unavailable shared storage still exits.
+### File locations and releases
 
-A typical form handler can use the returned canonical value:
+Keep datasets under your application's `priv/` directory. Mix bundles `priv/` into
+releases, and `Application.app_dir/2` finds it wherever the release is installed,
+which is why the path is set in `config/runtime.exs`. A relative path such as
+`"priv/ref_data"` works in development but depends on the directory the release is
+started from.
+
+An empty directory is valid. A missing directory or an invalid file stops your
+application from starting, with an error that names the path. If no `:path` is
+configured, RefData starts nothing, and lookups exit with `:noproc` until you
+configure one or name a source yourself.
+
+Treat datasets as trusted input. Files are read whole, with no size limits, so point
+RefData only at directories your application controls and never at uploaded files.
+
+### Separate sets of data
+
+To keep independent sets of datasets, for example one per context, start an instance
+for each in your supervision tree and leave `:path` unconfigured:
 
 ```elixir
-case RefData.validate_value("status", params["status"], disabled: disabled_labels) do
-  {:ok, value} -> {:ok, Map.put(params, "status", value)}
-  {:error, reason} -> {:error, {:status, reason}}
+children = [
+  {RefData, name: MyApp.Billing.RefData, path: Application.app_dir(:my_app, "priv/billing")},
+  {RefData, name: MyApp.Shipping.RefData, path: Application.app_dir(:my_app, "priv/shipping")}
+]
+```
+
+Select one with `:server`, or bind a module to it so callers do not repeat the name:
+
+```elixir
+RefData.get("payment_terms", server: MyApp.Billing.RefData)
+
+defmodule MyApp.Billing.Options do
+  use RefData, server: MyApp.Billing.RefData
+end
+
+MyApp.Billing.Options.get("payment_terms")
+```
+
+Pass `name: nil` to start an unnamed instance and query it by PID.
+
+### Scripts, jobs and tests
+
+`RefData.load/1` reads a directory into a catalog, a plain value you hold yourself.
+Nothing needs to be configured or started. This import script validates a CSV of
+customers before inserting them:
+
+```elixir
+{:ok, catalog} = RefData.load("priv/ref_data")
+
+for line <- File.stream!("customers.csv") |> Enum.drop(1) do
+  [name, country] = line |> String.trim() |> String.split(",")
+
+  case RefData.validate_value("countries", country, source: catalog) do
+    {:ok, code} -> IO.puts("importing #{name} (#{RefData.label("countries", code, source: catalog)})")
+    {:error, reason} -> IO.puts("skipping #{name}: #{reason}")
+  end
 end
 ```
+
+Every lookup, label and validation function accepts `source: catalog`. A catalog is
+a snapshot: it does not change if the files do, and loading one does not affect the
+shared storage. Call `RefData.load/1` again for fresh data. It returns
+`{:error, reason}` for a missing directory or an invalid file.
+
+In tests, a catalog loaded from a fixture directory lets you exercise a function
+without starting anything.
+
+### How storage works
+
+| | Shared storage | Catalog |
+| --- | --- | --- |
+| Started by | Configuring `:path`, or adding `{RefData, ...}` to a supervision tree | Calling `RefData.load/1` |
+| Data lives in | An ETS table readable by every process on the node | A value held by the caller |
+| Selected with | Nothing for the default, or `server: name` | `source: catalog` |
+| Reload changed files | Restart the instance | Load a new catalog |
+
+- A supervised process owns each table. It loads every file before making the table
+  visible, and if it crashes its supervisor restarts it and reloads the files.
+- Lookups read the table directly from the calling process. They do not send a
+  message to the owner, so reads do not queue behind each other.
+- The table is protected: only the owner can write to it.
+- A lookup made while the owner is starting or stopping exits with `:noproc`. That is
+  different from a missing dataset, which returns `nil` or `:error`.
+- A server on another node is queried by message, because ETS tables are local.
+- `:source` also accepts a server name. Supplying both `:source` and `:server` raises
+  `ArgumentError`.
 
 ## Migrating from 0.2
 
@@ -359,14 +428,13 @@ end
   than nested atom-keyed keyword lists. Update any code inspecting groups directly.
 - Missing keys return `nil` from `get` or `:error` from `fetch`. Use `get!` to raise.
 - Duplicate names and malformed definitions fail startup with a file-specific error.
-- Replace `use Mix.Config` with `import Config`. Use `priv/` and a runtime-resolved
-  path for releases.
+- Replace `use Mix.Config` with `import Config`.
 - The old callback declarations were removed; RefData is a concrete API rather
   than a behaviour. Internal server state and loader return values have changed.
 
 ## Development
 
-Install the versions in `.tool-versions`, then run:
+Install the versions in `.tool-versions` (Elixir 1.20.5 and OTP 29.1.2), then run:
 
 ```sh
 mix deps.get
@@ -379,5 +447,5 @@ mix docs --warnings-as-errors
 mix hex.build
 ```
 
-CI tests Elixir 1.18, 1.19 and 1.20 across OTP 27 to 29. Test servers use isolated
-temporary fixtures or the example datasets and do not require the default server.
+CI tests Elixir 1.18, 1.19 and 1.20 across OTP 27 to 29. The documented examples run
+against the datasets in `test/fixtures/docs`.

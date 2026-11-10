@@ -1,0 +1,7 @@
+{
+  "plans": [
+    {"key": "Starter", "value": "starter"},
+    {"key": "Pro", "value": "pro"},
+    {"key": "Legacy", "value": "legacy"}
+  ]
+}

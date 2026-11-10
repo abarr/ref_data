@@ -17,22 +17,32 @@ defmodule RefData do
       config :ref_data, path: Application.app_dir(:my_app, "priv/ref_data")
 
   Datasets are loaded into ETS when your application starts, and any process can
-  read them by name. The examples in this module assume these three files:
+  read them by name. The examples in this module assume these files:
 
-      # countries.json
-      {"countries": ["Australia", "New Zealand", "Canada"]}
+      # titles.json - labels and values are the same
+      {"titles": ["Dr", "Mr", "Mrs", "Ms", "Mx"]}
 
-      # countries_grouped.json
-      {"countries_grouped": [
-        {"Oceania": ["Australia", "New Zealand"]},
+      # plans.json - a label (`key`) and the value to store
+      {"plans": [
+        {"key": "Starter", "value": "starter"},
+        {"key": "Pro", "value": "pro"},
+        {"key": "Legacy", "value": "legacy"}
+      ]}
+
+      # payment_terms.json - values keep their JSON types
+      {"payment_terms": [
+        {"key": "Net 7", "value": 7},
+        {"key": "Net 30", "value": 30},
+        {"key": "Net 60", "value": 60}
+      ]}
+
+      # countries_by_region.json - groups
+      {"countries_by_region": [
+        {"Oceania": [{"key": "Australia", "value": "AU"}, {"key": "New Zealand", "value": "NZ"}]},
         {"Americas": [{"key": "Canada", "value": "CA"}]}
       ]}
 
-      # status.json
-      {"name": "status", "data": [
-        {"key": "Enabled", "value": true},
-        {"key": "Disabled", "value": false}
-      ]}
+  A fifth, `countries.json`, holds the same three countries without groups.
 
   ## Where the data comes from
 
@@ -101,11 +111,11 @@ defmodule RefData do
       {:ok, catalog} = RefData.load("priv/ref_data")
 
       RefData.list_all_keys(catalog)
-      # => ["countries", "countries_grouped", "status"]
+      # => ["countries", "countries_by_region", "payment_terms", "plans", "titles"]
 
       RefData.get("countries", source: catalog)
-      RefData.validate_value("status", "true", source: catalog)
-      RefData.label("countries_grouped", "CA", source: catalog)
+      RefData.validate_value("payment_terms", "30", source: catalog)
+      RefData.label("countries", "CA", source: catalog)
 
   A missing directory or an invalid file returns an error naming the path:
 
@@ -157,10 +167,12 @@ defmodule RefData do
   ## Examples
 
       iex> RefData.list_all_keys()
-      ["countries", "countries_grouped", "status"]
+      ["countries", "countries_by_region", "payment_terms", "plans", "titles"]
 
-      iex> RefData.list_all_keys(RefData.Server)
-      ["countries", "countries_grouped", "status"]
+  With `use RefData, server: MyApp.Billing.RefData` or a catalog, pass the source:
+
+      RefData.list_all_keys(MyApp.Billing.RefData)
+      RefData.list_all_keys(catalog)
   """
   @spec list_all_keys(source()) :: [String.t()]
   def list_all_keys(source \\ RefData.Server)
@@ -179,8 +191,8 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.fetch("status")
-      {:ok, [[key: "Enabled", value: true], [key: "Disabled", value: false]]}
+      iex> RefData.fetch("payment_terms")
+      {:ok, [[key: "Net 7", value: 7], [key: "Net 30", value: 30], [key: "Net 60", value: 60]]}
 
       iex> RefData.fetch("missing")
       :error
@@ -210,25 +222,29 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.get("countries")
+      iex> RefData.get("plans")
       [
-        [key: "Australia", value: "Australia"],
-        [key: "New Zealand", value: "New Zealand"],
-        [key: "Canada", value: "Canada"]
+        [key: "Starter", value: "starter"],
+        [key: "Pro", value: "pro"],
+        [key: "Legacy", value: "legacy"]
       ]
 
   Groups are returned as `{label, options}` tuples:
 
-      iex> RefData.get("countries_grouped")
+      iex> RefData.get("countries_by_region")
       [
-        {"Oceania", [[key: "Australia", value: "Australia"], [key: "New Zealand", value: "New Zealand"]]},
+        {"Oceania", [[key: "Australia", value: "AU"], [key: "New Zealand", value: "NZ"]]},
         {"Americas", [[key: "Canada", value: "CA"]]}
       ]
 
-  Disable options by label:
+  Disable an option by label, for example a plan that is no longer sold:
 
-      iex> RefData.get("status", disabled: ["Disabled"])
-      [[key: "Enabled", value: true], [key: "Disabled", value: false, disabled: true]]
+      iex> RefData.get("plans", disabled: ["Legacy"])
+      [
+        [key: "Starter", value: "starter"],
+        [key: "Pro", value: "pro"],
+        [key: "Legacy", value: "legacy", disabled: true]
+      ]
 
       iex> RefData.get("missing")
       nil
@@ -249,8 +265,8 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.get!("status")
-      [[key: "Enabled", value: true], [key: "Disabled", value: false]]
+      iex> RefData.get!("payment_terms")
+      [[key: "Net 7", value: 7], [key: "Net 30", value: 30], [key: "Net 60", value: 60]]
 
       RefData.get!("missing")
       # raises KeyError in the caller; the server keeps running
@@ -282,25 +298,25 @@ defmodule RefData do
 
   ## Examples
 
-  A browser submits strings; the stored boolean comes back:
+  A browser submits strings; the stored number comes back:
 
-      iex> RefData.validate_value("status", "true")
-      {:ok, true}
+      iex> RefData.validate_value("payment_terms", "30")
+      {:ok, 30}
 
   Values inside groups are found, and labels are not accepted as values:
 
-      iex> RefData.validate_value("countries_grouped", "CA")
+      iex> RefData.validate_value("countries_by_region", "CA")
       {:ok, "CA"}
 
-      iex> RefData.validate_value("countries_grouped", "Canada")
+      iex> RefData.validate_value("countries_by_region", "Canada")
       {:error, :invalid_value}
 
   Pass the same `:disabled` labels you rendered the form with:
 
-      iex> RefData.validate_value("status", "true", disabled: ["Enabled"])
+      iex> RefData.validate_value("plans", "legacy", disabled: ["Legacy"])
       {:error, :disabled_value}
 
-      iex> RefData.validate_value("missing", "true")
+      iex> RefData.validate_value("missing", "30")
       {:error, :unknown_dataset}
   """
   @spec validate_value(String.t(), term(), lookup_options()) ::
@@ -322,13 +338,13 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.valid_value?("countries", "Canada")
+      iex> RefData.valid_value?("countries", "CA")
       true
 
-      iex> RefData.valid_value?("countries", "Atlantis")
+      iex> RefData.valid_value?("countries", "XX")
       false
 
-      iex> RefData.valid_value?("countries", "Canada", disabled: ["Canada"])
+      iex> RefData.valid_value?("plans", "legacy", disabled: ["Legacy"])
       false
   """
   @spec valid_value?(String.t(), term(), lookup_options()) :: boolean()
@@ -347,16 +363,16 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.label("countries_grouped", "CA")
+      iex> RefData.label("countries_by_region", "CA")
       "Canada"
 
-      iex> RefData.label("status", false)
-      "Disabled"
+      iex> RefData.label("payment_terms", 30)
+      "Net 30"
 
-      iex> RefData.label("status", "false")
-      "Disabled"
+      iex> RefData.label("payment_terms", "30")
+      "Net 30"
 
-      iex> RefData.label("status", "archived")
+      iex> RefData.label("plans", "discontinued")
       nil
 
       iex> RefData.label("missing", "CA")
@@ -410,11 +426,11 @@ defmodule RefData do
 
       MyApp.RefData.get("countries")
 
-      defmodule MyApp.BillingData do
-        use RefData, server: MyApp.BillingReferenceData
+      defmodule MyApp.Billing.Options do
+        use RefData, server: MyApp.Billing.RefData
       end
 
-      MyApp.BillingData.label("plans", "pro")
+      MyApp.Billing.Options.label("plans", "pro")
 
   A lookup can still name a catalog with `source: catalog`, which takes the place
   of the module's server for that call.
