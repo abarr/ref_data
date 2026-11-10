@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-11-10
 
 ### Added
+- Examples for every public function, documented types and a Phoenix quick start;
+  all `iex>` examples in the docs and README run as tests.
 - `mix ref_data.init` creates `priv/ref_data/` with an example dataset and prints the
   configuration to add.
 - `RefData.label/3` returns the label for a stored value, for displaying saved choices.

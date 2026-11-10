@@ -1,23 +1,117 @@
 defmodule RefData do
   @moduledoc """
-  Loads JSON reference datasets for form options and submitted-value validation.
+  Reference data for forms, loaded from JSON files instead of database tables.
 
-  Use supervised storage for shared, direct ETS reads, or load an immutable
-  `RefData.Catalog` and pass it as `source: catalog` without starting a server.
-  See the README for data formats, configuration and supervision examples.
+  RefData turns each JSON file in a directory into a named dataset and gives you
+  three things for it:
+
+    * `get/2` returns options ready for a Phoenix select input.
+    * `validate_value/3` checks a submitted value against the dataset.
+    * `label/3` returns the label for a value you stored earlier.
+
+  ## Setting up
+
+  Create `priv/ref_data/` with `mix ref_data.init`, then point RefData at it in
+  `config/runtime.exs`:
+
+      config :ref_data, path: Application.app_dir(:my_app, "priv/ref_data")
+
+  Datasets are loaded into ETS when your application starts, and any process can
+  read them by name. The examples in this module assume these three files:
+
+      # countries.json
+      {"countries": ["Australia", "New Zealand", "Canada"]}
+
+      # countries_grouped.json
+      {"countries_grouped": [
+        {"Oceania": ["Australia", "New Zealand"]},
+        {"Americas": [{"key": "Canada", "value": "CA"}]}
+      ]}
+
+      # status.json
+      {"name": "status", "data": [
+        {"key": "Enabled", "value": true},
+        {"key": "Disabled", "value": false}
+      ]}
+
+  ## Where the data comes from
+
+  Every lookup reads from a *source*:
+
+    * The default server, started when `:path` is configured. This is what a
+      call without options uses.
+    * A server you supervise yourself with `{RefData, path: path, name: name}`,
+      selected with `server: name`.
+    * A catalog returned by `load/1`, selected with `source: catalog`. It needs
+      no process and suits scripts, jobs and tests.
+
+  All three behave the same for lookups, labels and validation. The README
+  covers the data formats and the trade-offs between sources in more detail.
   """
 
   alias RefData.{Catalog, Data, Options, Store}
 
+  @typedoc "A value submitted by a form and stored by your application."
   @type value :: String.t() | number() | boolean()
+
+  @typedoc """
+  One choice: its label under `:key` and its value under `:value`.
+
+  `disabled: true` is appended when the label was listed in the `:disabled` option.
+  """
   @type option :: [key: String.t(), value: value(), disabled: boolean()]
+
+  @typedoc "A labelled group of options, rendered as an `<optgroup>`."
   @type group :: {String.t(), [option() | group()]}
+
+  @typedoc "A dataset in the shape `Phoenix.HTML.Form.options_for_select/2` accepts."
   @type options :: [option() | group()]
+
+  @typedoc "Where to read datasets from: a loaded catalog, or the name or PID of a server."
   @type source :: Catalog.t() | GenServer.server()
+
+  @typedoc """
+  Options accepted by lookups and validation.
+
+    * `:disabled` - labels of options to mark as disabled.
+    * `:source` - a catalog or server to read from.
+    * `:server` - a server to read from; an alternative to `:source`.
+  """
   @type lookup_options :: [disabled: [String.t()], server: GenServer.server(), source: source()]
+
+  @typedoc """
+  Why `validate_value/3` rejected a value.
+
+    * `:unknown_dataset` - no dataset has that name.
+    * `:invalid_value` - no option has that value.
+    * `:disabled_value` - every option with that value is disabled.
+    * `:ambiguous_value` - a string matches several different values.
+  """
   @type validation_error :: :unknown_dataset | :invalid_value | :disabled_value | :ambiguous_value
 
-  @doc "Loads and validates a directory into an immutable catalog without starting a server."
+  @doc """
+  Loads a directory of JSON files into an immutable catalog without starting a server.
+
+  Pass the catalog to other functions as `source: catalog`. Loading does not
+  change the shared storage, and the catalog does not notice later file changes;
+  call `load/1` again for a fresh snapshot.
+
+  ## Examples
+
+      {:ok, catalog} = RefData.load("priv/ref_data")
+
+      RefData.list_all_keys(catalog)
+      # => ["countries", "countries_grouped", "status"]
+
+      RefData.get("countries", source: catalog)
+      RefData.validate_value("status", "true", source: catalog)
+      RefData.label("countries_grouped", "CA", source: catalog)
+
+  A missing directory or an invalid file returns an error naming the path:
+
+      RefData.load("missing")
+      # => {:error, "missing: no such file or directory"}
+  """
   @spec load(Path.t()) :: {:ok, Catalog.t()} | {:error, String.t()}
   def load(path) do
     with {:ok, datasets} <- Data.load(path) do
@@ -25,7 +119,28 @@ defmodule RefData do
     end
   end
 
-  @doc "Starts shared storage. Requires `:path`; accepts `:name` to override the default server name."
+  @doc """
+  Starts shared storage for the datasets in a directory.
+
+  You rarely call this directly. Configure `:path` to have RefData start a default
+  server for you, or add RefData to your own supervision tree.
+
+  ## Options
+
+    * `:path` - the directory to load. Required.
+    * `:name` - the name to register. Defaults to the name used by lookups without
+      options. Pass `nil` for an unnamed server that you query by PID.
+
+  ## Examples
+
+      children = [
+        {RefData, name: MyApp.ReferenceData, path: Application.app_dir(:my_app, "priv/ref_data")}
+      ]
+
+      RefData.get("countries", server: MyApp.ReferenceData)
+
+  Startup fails if the directory is missing or a file is invalid.
+  """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: RefData.Server.start_link(opts)
 
@@ -34,7 +149,19 @@ defmodule RefData do
     %{id: Keyword.get(opts, :name) || __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
-  @doc "Returns dataset names in alphabetical order from a server or loaded catalog."
+  @doc """
+  Returns dataset names in alphabetical order.
+
+  Pass a catalog or a server to list its datasets instead of the default server's.
+
+  ## Examples
+
+      iex> RefData.list_all_keys()
+      ["countries", "countries_grouped", "status"]
+
+      iex> RefData.list_all_keys(RefData.Server)
+      ["countries", "countries_grouped", "status"]
+  """
   @spec list_all_keys(source()) :: [String.t()]
   def list_all_keys(source \\ RefData.Server)
   def list_all_keys(%Catalog{} = catalog), do: Catalog.keys(catalog)
@@ -43,10 +170,20 @@ defmodule RefData do
   @doc """
   Returns `{:ok, options}` or `:error` when the dataset does not exist.
 
+  Accepts the same options as `get/2`.
+
   Local server lookups read directly from ETS. An unavailable server (including the
   default one when no `:path` is configured) exits with `:noproc`, rather than
-  being treated as a missing dataset. Remote servers use
-  messages because ETS tables cannot be read across nodes.
+  being treated as a missing dataset. Remote servers use messages because ETS
+  tables cannot be read across nodes.
+
+  ## Examples
+
+      iex> RefData.fetch("status")
+      {:ok, [[key: "Enabled", value: true], [key: "Disabled", value: false]]}
+
+      iex> RefData.fetch("missing")
+      :error
   """
   @spec fetch(String.t(), lookup_options()) :: {:ok, options()} | :error
   def fetch(key, opts \\ []) when is_binary(key) do
@@ -61,10 +198,40 @@ defmodule RefData do
   @doc """
   Returns dataset options, or `nil` if the dataset does not exist.
 
-  `:disabled` lists option labels (the `key` fields), including labels in groups.
-  `:source` selects a loaded catalog or server. `:server` remains supported as an
-  alternative for server selection; supplying both options raises `ArgumentError`.
-  Neither option changes the stored data.
+  The result can be passed straight to a Phoenix select input.
+
+  ## Options
+
+    * `:disabled` - labels (the `key` fields) of options to mark as disabled,
+      including labels inside groups. The stored data is not changed.
+    * `:source` - a catalog or server to read from.
+    * `:server` - a server to read from. Supplying both `:source` and `:server`
+      raises `ArgumentError`.
+
+  ## Examples
+
+      iex> RefData.get("countries")
+      [
+        [key: "Australia", value: "Australia"],
+        [key: "New Zealand", value: "New Zealand"],
+        [key: "Canada", value: "Canada"]
+      ]
+
+  Groups are returned as `{label, options}` tuples:
+
+      iex> RefData.get("countries_grouped")
+      [
+        {"Oceania", [[key: "Australia", value: "Australia"], [key: "New Zealand", value: "New Zealand"]]},
+        {"Americas", [[key: "Canada", value: "CA"]]}
+      ]
+
+  Disable options by label:
+
+      iex> RefData.get("status", disabled: ["Disabled"])
+      [[key: "Enabled", value: true], [key: "Disabled", value: false, disabled: true]]
+
+      iex> RefData.get("missing")
+      nil
   """
   @spec get(String.t(), lookup_options()) :: options() | nil
   def get(key, opts \\ []) do
@@ -74,7 +241,20 @@ defmodule RefData do
     end
   end
 
-  @doc "Returns dataset options, raising `KeyError` if the dataset does not exist."
+  @doc """
+  Returns dataset options, raising `KeyError` if the dataset does not exist.
+
+  Accepts the same options as `get/2`. Use it when a missing dataset is a bug,
+  such as a name written in a template.
+
+  ## Examples
+
+      iex> RefData.get!("status")
+      [[key: "Enabled", value: true], [key: "Disabled", value: false]]
+
+      RefData.get!("missing")
+      # raises KeyError in the caller; the server keeps running
+  """
   @spec get!(String.t(), lookup_options()) :: options()
   def get!(key, opts \\ []) do
     case fetch(key, opts) do
@@ -97,7 +277,31 @@ defmodule RefData do
   enabled values (for example `true` and `"true"`), it is rejected as ambiguous.
 
   Returns `{:error, reason}` for an unknown dataset, invalid value, disabled value
-  or ambiguous value. An unavailable server still exits, as with `fetch/2`.
+  or ambiguous value; see `t:validation_error/0`. An unavailable server still
+  exits, as with `fetch/2`. Accepts the same options as `get/2`.
+
+  ## Examples
+
+  A browser submits strings; the stored boolean comes back:
+
+      iex> RefData.validate_value("status", "true")
+      {:ok, true}
+
+  Values inside groups are found, and labels are not accepted as values:
+
+      iex> RefData.validate_value("countries_grouped", "CA")
+      {:ok, "CA"}
+
+      iex> RefData.validate_value("countries_grouped", "Canada")
+      {:error, :invalid_value}
+
+  Pass the same `:disabled` labels you rendered the form with:
+
+      iex> RefData.validate_value("status", "true", disabled: ["Enabled"])
+      {:error, :disabled_value}
+
+      iex> RefData.validate_value("missing", "true")
+      {:error, :unknown_dataset}
   """
   @spec validate_value(String.t(), term(), lookup_options()) ::
           {:ok, value()} | {:error, validation_error()}
@@ -110,7 +314,23 @@ defmodule RefData do
     end
   end
 
-  @doc "Returns whether a submitted value is valid and enabled. Accepts the same options as `validate_value/3`."
+  @doc """
+  Returns whether a submitted value is valid and enabled.
+
+  A boolean form of `validate_value/3` with the same rules and options. It returns
+  `false` for every validation error, including an unknown dataset.
+
+  ## Examples
+
+      iex> RefData.valid_value?("countries", "Canada")
+      true
+
+      iex> RefData.valid_value?("countries", "Atlantis")
+      false
+
+      iex> RefData.valid_value?("countries", "Canada", disabled: ["Canada"])
+      false
+  """
   @spec valid_value?(String.t(), term(), lookup_options()) :: boolean()
   def valid_value?(key, submitted, opts \\ []) do
     match?({:ok, _}, validate_value(key, submitted, opts))
@@ -124,6 +344,23 @@ defmodule RefData do
   string matches a value's string representation, as in `validate_value/3`. If
   several options share the value, the first label in the dataset is returned.
   Accepts `:source` or `:server`.
+
+  ## Examples
+
+      iex> RefData.label("countries_grouped", "CA")
+      "Canada"
+
+      iex> RefData.label("status", false)
+      "Disabled"
+
+      iex> RefData.label("status", "false")
+      "Disabled"
+
+      iex> RefData.label("status", "archived")
+      nil
+
+      iex> RefData.label("missing", "CA")
+      nil
   """
   @spec label(String.t(), term(), source: source(), server: GenServer.server()) ::
           String.t() | nil
@@ -158,7 +395,30 @@ defmodule RefData do
     end
   end
 
-  @doc "Defines lookup and validation functions delegating to RefData. Accepts a `:server` option."
+  @doc """
+  Defines a module of lookup and validation functions that delegate to RefData.
+
+  The module gets `list_all_keys/0`, `get/2`, `get!/2`, `fetch/2`, `label/3`,
+  `validate_value/3` and `valid_value?/3`, each with the options argument
+  optional. Pass `:server` to bind the module to a server you supervise.
+
+  ## Examples
+
+      defmodule MyApp.RefData do
+        use RefData
+      end
+
+      MyApp.RefData.get("countries")
+
+      defmodule MyApp.BillingData do
+        use RefData, server: MyApp.BillingReferenceData
+      end
+
+      MyApp.BillingData.label("plans", "pro")
+
+  A lookup can still name a catalog with `source: catalog`, which takes the place
+  of the module's server for that call.
+  """
   defmacro __using__(opts) do
     server = Keyword.get(opts, :server, RefData.Server)
 

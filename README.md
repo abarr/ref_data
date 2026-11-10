@@ -21,6 +21,59 @@ def deps do
 end
 ```
 
+## Quick start with Phoenix
+
+This walks one field, a user's country, through a form: rendering the choices,
+validating the submission, and displaying the stored value.
+
+**1. Create a dataset.** `mix ref_data.init` creates `priv/ref_data/`. Add
+`priv/ref_data/countries.json`, giving each option a label (`key`) and the value to store:
+
+```json
+{
+  "name": "countries",
+  "data": [
+    {"key": "Australia", "value": "AU"},
+    {"key": "Canada", "value": "CA"},
+    {"key": "New Zealand", "value": "NZ"}
+  ]
+}
+```
+
+**2. Tell RefData where it is**, in `config/runtime.exs`:
+
+```elixir
+config :ref_data, path: Application.app_dir(:my_app, "priv/ref_data")
+```
+
+**3. Render the choices.** `RefData.get/2` returns options in the shape Phoenix
+select inputs accept:
+
+```heex
+<.input field={@form[:country]} type="select" options={RefData.get("countries")} prompt="Choose a country" />
+```
+
+**4. Validate the submission.** Never trust that a submitted value came from your
+list. In an Ecto changeset:
+
+```elixir
+def changeset(user, attrs) do
+  user
+  |> cast(attrs, [:country])
+  |> validate_change(:country, fn :country, value ->
+    if RefData.valid_value?("countries", value), do: [], else: [country: "is not a valid choice"]
+  end)
+end
+```
+
+**5. Display the stored value.** The database holds `"CA"`; show the label:
+
+```heex
+<p>Country: {RefData.label("countries", @user.country)}</p>
+```
+
+The rest of this document covers each part in detail.
+
 ## Choosing how to store data
 
 **Use shared ETS storage for a Phoenix app or any application where several parts
@@ -164,39 +217,45 @@ Group labels remain strings; no atoms are created from JSON labels.
 
 ## Lookups
 
-With the default shared ETS storage:
+The examples below use the three datasets shown under [Data formats](#data-formats),
+loaded into the default shared ETS storage. Every `iex>` example in this document
+and in the function documentation runs as part of the test suite.
 
 ```elixir
-RefData.list_all_keys()
-# => ["countries", "countries_grouped", "status"]
+iex> RefData.list_all_keys()
+["countries", "countries_grouped", "status"]
 
-RefData.get("countries")
-# => [[key: "Australia", value: "Australia"],
-#     [key: "New Zealand", value: "New Zealand"],
-#     [key: "Canada", value: "Canada"]]
+iex> RefData.get("countries")
+[
+  [key: "Australia", value: "Australia"],
+  [key: "New Zealand", value: "New Zealand"],
+  [key: "Canada", value: "Canada"]
+]
 
-RefData.get("countries_grouped")
-# => [{"Oceania", [[key: "Australia", value: "Australia"],
-#                   [key: "New Zealand", value: "New Zealand"]]},
-#     {"Americas", [[key: "Canada", value: "CA"]]}]
+iex> RefData.get("countries_grouped")
+[
+  {"Oceania", [[key: "Australia", value: "Australia"], [key: "New Zealand", value: "New Zealand"]]},
+  {"Americas", [[key: "Canada", value: "CA"]]}
+]
 
-RefData.fetch("missing")
-# => :error
+iex> RefData.fetch("missing")
+:error
 
-RefData.get("missing")
-# => nil
-
-RefData.get!("missing")
-# raises KeyError in the caller; the server continues running
+iex> RefData.get("missing")
+nil
 ```
+
+`RefData.get!("missing")` raises `KeyError` in the caller; the server continues running.
 
 Disable options by **label**, including labels inside groups:
 
 ```elixir
-RefData.get("countries", disabled: ["Canada"])
-# => [[key: "Australia", value: "Australia"],
-#     [key: "New Zealand", value: "New Zealand"],
-#     [key: "Canada", value: "Canada", disabled: true]]
+iex> RefData.get("countries", disabled: ["Canada"])
+[
+  [key: "Australia", value: "Australia"],
+  [key: "New Zealand", value: "New Zealand"],
+  [key: "Canada", value: "Canada", disabled: true]
+]
 ```
 
 These results can be passed to `Phoenix.HTML.Form.options_for_select/2`.
@@ -224,14 +283,14 @@ wrapper's server for a particular lookup or validation.
 `label/3` returns the label for a value you saved earlier, searching groups too:
 
 ```elixir
-RefData.label("countries_grouped", "CA")
-# => "Canada"
+iex> RefData.label("countries_grouped", "CA")
+"Canada"
 
-RefData.label("status", true)
-# => "Enabled"
+iex> RefData.label("status", true)
+"Enabled"
 
-RefData.label("status", "unknown")
-# => nil
+iex> RefData.label("status", "unknown")
+nil
 ```
 
 It returns `nil` for an unknown dataset or value. A value of the same type is
@@ -248,20 +307,20 @@ allowed choice. Labels are not accepted unless they are also a stored value.
 For the `status` dataset above:
 
 ```elixir
-RefData.validate_value("status", "true")
-# => {:ok, true}
+iex> RefData.validate_value("status", "true")
+{:ok, true}
 
-RefData.validate_value("status", "false")
-# => {:ok, false}
+iex> RefData.validate_value("status", "false")
+{:ok, false}
 
-RefData.validate_value("status", "Enabled")
-# => {:error, :invalid_value}
+iex> RefData.validate_value("status", "Enabled")
+{:error, :invalid_value}
 
-RefData.validate_value("status", "true", disabled: ["Enabled"])
-# => {:error, :disabled_value}
+iex> RefData.validate_value("status", "true", disabled: ["Enabled"])
+{:error, :disabled_value}
 
-RefData.valid_value?("status", "false")
-# => true
+iex> RefData.valid_value?("status", "false")
+true
 ```
 
 Browser form fields arrive as strings. A string must exactly equal the string
