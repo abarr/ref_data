@@ -1,6 +1,11 @@
 defmodule RefData.CatalogTest do
   use ExUnit.Case, async: true
 
+  # Defined here rather than shared with another test file, whose load order is not guaranteed.
+  defmodule Wrapper do
+    use RefData, server: RefData.CatalogTest.Server
+  end
+
   @moduletag :tmp_dir
 
   test "a standalone snapshot supports lookup and validation without a dataset server", %{
@@ -33,9 +38,9 @@ defmodule RefData.CatalogTest do
   test "source selection is explicit and wrapper defaults can be overridden", %{tmp_dir: dir} do
     File.write!(Path.join(dir, "data.json"), JSON.encode!(%{"example" => ["One"]}))
     {:ok, catalog} = RefData.load(dir)
-    assert RefDataTest.Wrapper.get("example", source: catalog) == [[key: "One", value: "One"]]
-    assert RefDataTest.Wrapper.validate_value("example", "One", source: catalog) == {:ok, "One"}
-    assert RefDataTest.Wrapper.valid_value?("example", "One", source: catalog)
+    assert Wrapper.get("example", source: catalog) == [[key: "One", value: "One"]]
+    assert Wrapper.validate_value("example", "One", source: catalog) == {:ok, "One"}
+    assert Wrapper.valid_value?("example", "One", source: catalog)
 
     for fun <- [
           fn -> RefData.fetch("example", source: catalog, server: self()) end,
