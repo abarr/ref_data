@@ -2,6 +2,8 @@ defmodule Mix.Tasks.RefData.InitTest do
   # Changes the working directory and the Mix shell, so it cannot run concurrently.
   use ExUnit.Case, async: false
 
+  alias Mix.Tasks.RefData.Init
+
   @moduletag :tmp_dir
 
   setup do
@@ -11,7 +13,7 @@ defmodule Mix.Tasks.RefData.InitTest do
   end
 
   test "creates a loadable example dataset and prints the configuration", %{tmp_dir: dir} do
-    File.cd!(dir, fn -> Mix.Tasks.RefData.Init.run([]) end)
+    File.cd!(dir, fn -> Init.run([]) end)
 
     assert {:ok, catalog} = RefData.load(Path.join(dir, "priv/ref_data"))
     assert RefData.list_all_keys(catalog) == ["example"]
@@ -25,7 +27,7 @@ defmodule Mix.Tasks.RefData.InitTest do
     File.mkdir_p!(target)
     File.write!(Path.join(target, "mine.json"), ~s({"mine": ["A"]}))
 
-    File.cd!(dir, fn -> Mix.Tasks.RefData.Init.run([]) end)
+    File.cd!(dir, fn -> Init.run([]) end)
 
     assert File.ls!(target) == ["mine.json"]
     assert_received {:mix_shell, :info, ["priv/ref_data already contains datasets" <> _]}
