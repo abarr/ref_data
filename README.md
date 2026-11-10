@@ -156,7 +156,14 @@ test suite against the five files above.
 
 ### Select options
 
-`get/2` returns a dataset ready for a select input:
+`get/2` returns a dataset ready for a select input. A plain list gives each option
+the same label and value.
+
+Stored in `titles.json`:
+
+```json
+{"titles": ["Dr", "Mr", "Mrs", "Ms", "Mx"]}
+```
 
 ```elixir
 iex> RefData.get("titles")
@@ -169,7 +176,16 @@ iex> RefData.get("titles")
 ]
 ```
 
-Groups come back as `{label, options}` tuples:
+Groups come back as `{label, options}` tuples.
+
+Stored in `countries_by_region.json`:
+
+```json
+{"countries_by_region": [
+  {"Oceania": [{"key": "Australia", "value": "AU"}, {"key": "New Zealand", "value": "NZ"}]},
+  {"Americas": [{"key": "Canada", "value": "CA"}]}
+]}
+```
 
 ```elixir
 iex> RefData.get("countries_by_region")
@@ -201,7 +217,18 @@ dataset name is a bug you want to hear about.
 ### Retiring an option
 
 Suppose the Legacy plan is no longer sold, but existing customers are still on it.
-Pass its label in `:disabled` to grey it out in the form:
+
+Stored in `plans.json`:
+
+```json
+{"plans": [
+  {"key": "Starter", "value": "starter"},
+  {"key": "Pro", "value": "pro"},
+  {"key": "Legacy", "value": "legacy"}
+]}
+```
+
+Pass the plan's label in `:disabled` to grey it out in the form:
 
 ```elixir
 iex> RefData.get("plans", disabled: ["Legacy"])
@@ -213,11 +240,15 @@ iex> RefData.get("plans", disabled: ["Legacy"])
 ```
 
 A browser will not submit a disabled option, but a crafted request can. Pass the
-same list when validating so it is rejected:
+same list when validating so the stored value `"legacy"` is rejected, while the
+other plans stay valid:
 
 ```elixir
 iex> RefData.validate_value("plans", "legacy", disabled: ["Legacy"])
 {:error, :disabled_value}
+
+iex> RefData.validate_value("plans", "pro", disabled: ["Legacy"])
+{:ok, "pro"}
 ```
 
 Existing customers still see the right name, because labels ignore `:disabled`:
@@ -233,25 +264,45 @@ dataset, so you can decide per form or per user what to disable.
 ### Validating submissions
 
 `validate_value/3` checks a submitted value against a dataset's **values** and
-returns the value to store. Browsers submit everything as strings, so a string is
-matched against each value's text form and the stored type comes back:
+returns the value to store.
+
+Stored in `payment_terms.json`, where the values are numbers:
+
+```json
+{"payment_terms": [
+  {"key": "Net 7", "value": 7},
+  {"key": "Net 30", "value": 30},
+  {"key": "Net 60", "value": 60}
+]}
+```
+
+Browsers submit everything as strings, so a string is matched against each value's
+text form and the stored number comes back:
 
 ```elixir
 iex> RefData.validate_value("payment_terms", "30")
 {:ok, 30}
+```
 
+`45` is not one of the stored values, and `"Net 30"` is a label rather than a value:
+
+```elixir
 iex> RefData.validate_value("payment_terms", "45")
+{:error, :invalid_value}
+
+iex> RefData.validate_value("payment_terms", "Net 30")
 {:error, :invalid_value}
 ```
 
-Labels are not accepted, and values inside groups are found:
+Values inside groups are found. `countries_by_region.json`, shown above, stores
+`"NZ"` under Oceania:
 
 ```elixir
-iex> RefData.validate_value("payment_terms", "Net 30")
-{:error, :invalid_value}
-
 iex> RefData.validate_value("countries_by_region", "NZ")
 {:ok, "NZ"}
+
+iex> RefData.validate_value("countries_by_region", "Oceania")
+{:error, :invalid_value}
 ```
 
 In a controller or LiveView, use the returned value rather than the raw parameter:
@@ -264,7 +315,8 @@ end
 ```
 
 When you only need yes or no, as in the changeset in the quick start, use
-`valid_value?/3`. For a multi-select field, check each submitted value:
+`valid_value?/3`. For a multi-select field, check each submitted value. The
+`countries` dataset stores `"AU"`, `"CA"` and `"NZ"`, so only `"XX"` is rejected:
 
 ```elixir
 iex> submitted = ["AU", "NZ", "XX"]
@@ -288,20 +340,38 @@ either label is enabled.
 
 ### Displaying stored values
 
-`label/3` turns a stored value back into its label, searching inside groups too:
+`label/3` turns a stored value back into its label.
+
+Stored in `payment_terms.json`:
+
+```json
+{"payment_terms": [
+  {"key": "Net 7", "value": 7},
+  {"key": "Net 30", "value": 30},
+  {"key": "Net 60", "value": 60}
+]}
+```
+
+A customer record holds the number `30`, or the string `"30"` if it came straight
+from a form. Both find the label, and `45` is not stored so it has none:
 
 ```elixir
-iex> RefData.label("countries_by_region", "CA")
-"Canada"
-
 iex> RefData.label("payment_terms", 30)
 "Net 30"
 
 iex> RefData.label("payment_terms", "30")
 "Net 30"
 
-iex> RefData.label("plans", "discontinued")
+iex> RefData.label("payment_terms", 45)
 nil
+```
+
+Groups are searched too. `countries_by_region.json` stores `"CA"` with the label
+`"Canada"` under Americas:
+
+```elixir
+iex> RefData.label("countries_by_region", "CA")
+"Canada"
 ```
 
 It returns `nil` for an unknown dataset or value, so a template can supply a fallback:

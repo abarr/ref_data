@@ -191,6 +191,16 @@ defmodule RefData do
 
   ## Examples
 
+  Given `payment_terms.json`:
+
+  ```json
+  {"payment_terms": [
+    {"key": "Net 7", "value": 7},
+    {"key": "Net 30", "value": 30},
+    {"key": "Net 60", "value": 60}
+  ]}
+  ```
+
       iex> RefData.fetch("payment_terms")
       {:ok, [[key: "Net 7", value: 7], [key: "Net 30", value: 30], [key: "Net 60", value: 60]]}
 
@@ -222,19 +232,21 @@ defmodule RefData do
 
   ## Examples
 
+  Given `plans.json`:
+
+  ```json
+  {"plans": [
+    {"key": "Starter", "value": "starter"},
+    {"key": "Pro", "value": "pro"},
+    {"key": "Legacy", "value": "legacy"}
+  ]}
+  ```
+
       iex> RefData.get("plans")
       [
         [key: "Starter", value: "starter"],
         [key: "Pro", value: "pro"],
         [key: "Legacy", value: "legacy"]
-      ]
-
-  Groups are returned as `{label, options}` tuples:
-
-      iex> RefData.get("countries_by_region")
-      [
-        {"Oceania", [[key: "Australia", value: "AU"], [key: "New Zealand", value: "NZ"]]},
-        {"Americas", [[key: "Canada", value: "CA"]]}
       ]
 
   Disable an option by label, for example a plan that is no longer sold:
@@ -245,6 +257,23 @@ defmodule RefData do
         [key: "Pro", value: "pro"],
         [key: "Legacy", value: "legacy", disabled: true]
       ]
+
+  Groups are returned as `{label, options}` tuples. Given `countries_by_region.json`:
+
+  ```json
+  {"countries_by_region": [
+    {"Oceania": [{"key": "Australia", "value": "AU"}, {"key": "New Zealand", "value": "NZ"}]},
+    {"Americas": [{"key": "Canada", "value": "CA"}]}
+  ]}
+  ```
+
+      iex> RefData.get("countries_by_region")
+      [
+        {"Oceania", [[key: "Australia", value: "AU"], [key: "New Zealand", value: "NZ"]]},
+        {"Americas", [[key: "Canada", value: "CA"]]}
+      ]
+
+  A dataset that does not exist:
 
       iex> RefData.get("missing")
       nil
@@ -264,6 +293,16 @@ defmodule RefData do
   such as a name written in a template.
 
   ## Examples
+
+  Given `payment_terms.json`:
+
+  ```json
+  {"payment_terms": [
+    {"key": "Net 7", "value": 7},
+    {"key": "Net 30", "value": 30},
+    {"key": "Net 60", "value": 60}
+  ]}
+  ```
 
       iex> RefData.get!("payment_terms")
       [[key: "Net 7", value: 7], [key: "Net 30", value: 30], [key: "Net 60", value: 60]]
@@ -298,23 +337,36 @@ defmodule RefData do
 
   ## Examples
 
-  A browser submits strings; the stored number comes back:
+  Given `payment_terms.json`:
+
+  ```json
+  {"payment_terms": [
+    {"key": "Net 7", "value": 7},
+    {"key": "Net 30", "value": 30},
+    {"key": "Net 60", "value": 60}
+  ]}
+  ```
+
+  A browser submits the string `"30"`; the stored number comes back:
 
       iex> RefData.validate_value("payment_terms", "30")
       {:ok, 30}
 
-  Values inside groups are found, and labels are not accepted as values:
+  `45` is not a stored value, and `"Net 30"` is a label rather than a value:
 
-      iex> RefData.validate_value("countries_by_region", "CA")
-      {:ok, "CA"}
-
-      iex> RefData.validate_value("countries_by_region", "Canada")
+      iex> RefData.validate_value("payment_terms", "45")
       {:error, :invalid_value}
 
-  Pass the same `:disabled` labels you rendered the form with:
+      iex> RefData.validate_value("payment_terms", "Net 30")
+      {:error, :invalid_value}
 
-      iex> RefData.validate_value("plans", "legacy", disabled: ["Legacy"])
+  Pass the same `:disabled` labels you rendered the form with. Here the value `30`
+  is stored, but its label is disabled:
+
+      iex> RefData.validate_value("payment_terms", "30", disabled: ["Net 30"])
       {:error, :disabled_value}
+
+  A dataset that does not exist:
 
       iex> RefData.validate_value("missing", "30")
       {:error, :unknown_dataset}
@@ -338,11 +390,28 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.valid_value?("countries", "CA")
+  Given `plans.json`:
+
+  ```json
+  {"plans": [
+    {"key": "Starter", "value": "starter"},
+    {"key": "Pro", "value": "pro"},
+    {"key": "Legacy", "value": "legacy"}
+  ]}
+  ```
+
+      iex> RefData.valid_value?("plans", "pro")
       true
 
-      iex> RefData.valid_value?("countries", "XX")
+  `"enterprise"` is not stored, and `"Pro"` is a label rather than a value:
+
+      iex> RefData.valid_value?("plans", "enterprise")
       false
+
+      iex> RefData.valid_value?("plans", "Pro")
+      false
+
+  `"legacy"` is stored, but its label is disabled:
 
       iex> RefData.valid_value?("plans", "legacy", disabled: ["Legacy"])
       false
@@ -363,8 +432,17 @@ defmodule RefData do
 
   ## Examples
 
-      iex> RefData.label("countries_by_region", "CA")
-      "Canada"
+  Given `payment_terms.json`:
+
+  ```json
+  {"payment_terms": [
+    {"key": "Net 7", "value": 7},
+    {"key": "Net 30", "value": 30},
+    {"key": "Net 60", "value": 60}
+  ]}
+  ```
+
+  The stored number `30`, or the string `"30"` from a form, finds its label:
 
       iex> RefData.label("payment_terms", 30)
       "Net 30"
@@ -372,10 +450,14 @@ defmodule RefData do
       iex> RefData.label("payment_terms", "30")
       "Net 30"
 
-      iex> RefData.label("plans", "discontinued")
+  `45` is not stored, so it has no label:
+
+      iex> RefData.label("payment_terms", 45)
       nil
 
-      iex> RefData.label("missing", "CA")
+  A dataset that does not exist:
+
+      iex> RefData.label("missing", 30)
       nil
   """
   @spec label(String.t(), term(), source: source(), server: GenServer.server()) ::
