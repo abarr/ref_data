@@ -50,8 +50,14 @@ data; a standalone catalog does not replace the shared default implicitly.
 
 Tell RefData where your datasets are and it starts a supervised owner that loads the
 `*.json` files in that directory into ETS. Put them in your application's
-`priv/ref_data/` directory so Mix bundles them into releases, and resolve the path at
-runtime in `config/runtime.exs`:
+`priv/ref_data/` directory so Mix bundles them into releases. To create the directory
+with an example dataset, run:
+
+```sh
+mix ref_data.init
+```
+
+Then resolve the path at runtime in `config/runtime.exs`:
 
 ```elixir
 import Config
